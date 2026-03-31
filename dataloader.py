@@ -6,7 +6,6 @@ class BioLatticeNet3D(nn.Module):
     def __init__(self):
         super(BioLatticeNet3D, self).init()
         # Input: [Batch, 3 channels, 32, 32, 32]
-        
         # Block 1: Edge and texture extraction
         self.conv1 = nn.Conv3d(3, 16, kernel_size=3, padding=1)
         self.bn1 = nn.BatchNorm3d(16)

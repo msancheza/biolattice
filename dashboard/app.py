@@ -133,7 +133,7 @@ with tab2:
             try:
                 import re
                 
-                # Ejecutamos python con -u (unbuffered) para forzar los logs en tiempo real
+                # Exect python with -u (unbuffered) to force logs in real time
                 process = subprocess.Popen(
                     ["python", "-u", "train.py"], 
                     cwd=BASE_DIR, 
