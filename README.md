@@ -23,6 +23,15 @@ pip install -r requirements.txt
 
 PyTorch: If you need a specific hardware variant (CPU/CUDA), follow the [official installation guide](https://pytorch.org/get-started/locally/).
 
+## Dataset & Reproducibility (Duke Breast Cancer MRI)
+
+For testing was used the public **Duke Breast Cancer MRI dataset** from The Cancer Imaging Archive (TCIA). 
+
+Since raw DICOM MRI sequences and the generated 4D tensors weigh hundreds of gigabytes, **they are not included in this code repository** to ensure lightning-fast cloning. 
+
+* **To test the pipeline out-of-the-box:** You can use the pre-compiled tensors provided in the `datasets/examples_microcubos/` folder. Just copy those few `.pt` files into `datasets/micro_cubos/` to instantly run the *Predict* (`predict.py`) or test the Streamlit dashboard on patients `Breast_MRI_001` through `007` without needing to download massive medical archives.
+* **To reproduce the full research:** You must download the native Duke cohort from TCIA, extract the DICOMs into `datasets/raw_data/<PatientID>/`, and run the Data Extraction Module (`main.py`) to generate your own tensors.
+
 ## Usage (Core Pipeline)
 
 1. **`python main.py`** — Parses DICOMs, crops the target Region of Interest (with padding), and serializes `.pt` tensors into `datasets/micro_cubos/`.
