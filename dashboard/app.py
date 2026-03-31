@@ -147,8 +147,8 @@ with tab2:
                 for line in process.stdout:
                     full_log += line
                     
-                    # Buscamos coincidencias con "Época [X/Y]"
-                    match = re.search(r"Época \[(\d+)/(\d+)\]", line)
+                    # Lógica de barra de progreso para "Epoch [X/Y]"
+                    match = re.search(r"Epoch \[(\d+)/(\d+)\]", line)
                     if match:
                         curr_epoch = int(match.group(1))
                         total_ep = int(match.group(2))

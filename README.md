@@ -4,6 +4,10 @@ Converts raw breast MRI volumes (DICOM) into highly compact **32×32×32 4D micr
 
 The micro-cube itself is a powerful **input representation**: with different clinical labels and a modified classification head (e.g., multi-class molecular subtypes), it could be adapted to other diagnostic tasks, subject to cohort size and data availability.
 
+## 🌱 Green AI & Computational Efficiency
+
+Instead of training massive, energy-hungry 3D Convolutional Networks directly on gigabyte-scale DICOMs, Bio-Lattice mathematically condenses clinical data into microscopic 4D tensors *prior* to deep learning. This allows the core 3D-ResNet to train natively on consumer-grade hardware (e.g., Apple Silicon) in minutes rather than days on cloud GPUs. This architecture drastically reduces the operational carbon footprint and cloud computing costs, democratizing high-tier medical research without sacrificing diagnostic sensitivity.
+
 ## Requirements
 
 - Python 3.10+ (The project locally uses Python 3.13)
@@ -76,9 +80,6 @@ graph TD
 3. **`python predict.py`** — Performs Virtual Biopsy inference for a specific `Patient ID`.
 4. **`streamlit run dashboard/app.py`** — Launches the interactive UI orchestrator to handle the full pipeline and dataset evaluations visually.
 
-## Additional Details
-
-In **`docs/`** you'll find the technical pipeline documentation and business validation notes. **`visualizer.py`** provides utilities to inspect the geometry of a generated cube. **`backup/`** keeps legacy script versions.
 
 ## Medical Disclaimer
 

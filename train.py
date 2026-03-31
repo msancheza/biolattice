@@ -147,7 +147,7 @@ def train_model():
     
     # BUGFIX 2: Active GPU Device (Supports Apple Silicon MPS and NVIDIA CUDA)
     device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-    print(f"🖥️  Sending Bio-Lattice 4D architecture to hardware accelerator: {device}")
+    print(f"Sending Bio-Lattice 4D architecture to hardware accelerator: {device}")
     
     modelo = BioLattice3DResNet().to(device) # <--- Transfer Residual Architecture to VRAM
     
@@ -208,7 +208,7 @@ def train_model():
             os.makedirs("datasets/modelo", exist_ok=True)
             torch.save(modelo.state_dict(), "datasets/modelo/biolattice_3dresnet_binary.pth")
             
-    print("✅ 3D-ResNet Training finished empirically and best weights saved locally.")
+    print("3D-ResNet Training finished empirically and best weights saved locally.")
 
 if __name__ == "__main__":
     train_model()
