@@ -25,48 +25,48 @@ PyTorch: If you need a specific hardware variant (CPU/CUDA), follow the [officia
 
 ```mermaid
 graph TD
-    %% Estilos Globales
+    %% Global Styles
     classDef raw fill:#eef2f5,stroke:#93a1a1,stroke-width:2px,color:#2c3e50;
     classDef process fill:#fef9e7,stroke:#d4ac0d,stroke-width:2px,color:#7d6608;
     classDef tensor fill:#e8f8f5,stroke:#28b463,stroke-width:2px,color:#145a32,font-weight:bold;
     classDef net fill:#fdf2e9,stroke:#e74c3c,stroke-width:2px,color:#78281f;
 
-    %% 1. DICOM crudos
-    subgraph Fase 1: Duke MRI Dataset
-        PRE["Fase Pre-Contraste <br/> V_pre"]:::raw
-        POST["Fase Post-Contraste <br/> V_post"]:::raw
+    %% 1. Raw DICOM Sequences
+    subgraph Phase 1: Duke MRI Dataset
+        PRE["Pre-Contrast Phase <br/> V_pre"]:::raw
+        POST["Post-Contrast Phase <br/> V_post"]:::raw
     end
 
-    %% 2. Extracción Geométrica
-    subgraph Fase 2: Localización y Registro
-        ALIGN{"Co-Registro Espacial <br/> Mitigación de Artefactos"}:::process
-        ROI["Extracción ROI Bounding Box <br/> + Context Padding Halo 20%"]:::process
+    %% 2. Geometric Extraction
+    subgraph Phase 2: Localization & Registration
+        ALIGN{"Spatial Co-Registration <br/> Artifact Mitigation"}:::process
+        ROI["ROI Bounding Box Extraction <br/> + 20% Context Padding Halo"]:::process
     end
 
     PRE --> ALIGN
     POST --> ALIGN
     ALIGN --> ROI
 
-    %% 3. La Red de Bio-Lattice
-    subgraph Fase 3: Forjado Multimodal 4D - El Tejedor
-        C1["Canal 1: Estructura <br/> Adaptive Max Pooling"]:::process
-        C2["Canal 2: Varianza Radiómica <br/> E X² - E X ²"]:::process
-        C3["Canal 3: Cinética Temporal <br/> Sustracción V_post - V_pre"]:::process
+    %% 3. The Tensor Weaver
+    subgraph Phase 3: 4D Multi-Modal Forging - The Weaver
+        C1["Channel 1: Structure <br/> Adaptive Max Pooling"]:::process
+        C2["Channel 2: Radiomic Variance <br/> E X² - E X ²"]:::process
+        C3["Channel 3: Temporal Kinetics <br/> Subtraction V_post - V_pre"]:::process
     end
 
     ROI --> C1
     ROI --> C2
     ROI --> C3
 
-    %% 4. Salida Final
-    CUB{"(Bio-Lattice Tensor) <br/> 3 Canales x 32³ Píxeles"}:::tensor
+    %% 4. Final Output
+    CUB{"(Bio-Lattice Tensor) <br/> 3 Channels x 32³ Pixels"}:::tensor
     C1 --> CUB
     C2 --> CUB
     C3 --> CUB
 
-    %% 5. Inferencia
-    RES(["Arquitectura 3D-ResNet"]):::net
-    LOSS("Calibración: Biopsia Real <br/> BCEWithLogitsLoss")
+    %% 5. Downstream Inference
+    RES(["3D-ResNet Architecture"]):::net
+    LOSS("Ground Truth Calibration <br/> Biopsy via BCEWithLogitsLoss")
 
     CUB ==> RES
     RES -.-> LOSS
