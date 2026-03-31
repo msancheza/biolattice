@@ -1,0 +1,17 @@
+# Entornos Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Archivos de Sistema Operativo
+.DS_Store
+
+# Archivos pesados de Machine Learning e Imágenes DICOM
+datasets/micro_cubos/
+datasets/raw_data/
+datasets/modelo/
+
+# Tus exclusiones previas
+backup/
+docs/
