@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
-from visualizer import visualizar_micro_cubo
+from visualizer import visualize_micro_cube
 
 # --- CONFIGURATION ---
 PATH_RAW = 'datasets/raw_data/'
@@ -17,14 +17,14 @@ SHOW_VISUALIZER = False
 if not os.path.exists(PATH_OUTPUT):
     os.makedirs(PATH_OUTPUT)
 
-def obtener_volumen_3d(ruta_serie):
+def get_3d_volume(ruta_serie):
     archivos_paths = [os.path.join(ruta_serie, f) for f in os.listdir(ruta_serie) if f.endswith('.dcm')]
     slices = [pydicom.dcmread(f) for f in archivos_paths]
     # Sort by Z position (crucial so the cube is not scrambled)
     slices.sort(key=lambda x: float(x.ImagePositionPatient[2]))
     return np.stack([f.pixel_array for f in slices]).astype(np.float32)
 
-def recortar_roi_con_padding(volumen, coords, padding_pct=0.20):
+def crop_roi_with_padding(volumen, coords, padding_pct=0.20):
     """ Isolates the tumor but extracts an extra 20% to capture spicules (Peritumoral Halo). """
     z1, z2, y1, y2, x1, x2 = coords
     
@@ -41,7 +41,7 @@ def recortar_roi_con_padding(volumen, coords, padding_pct=0.20):
     # Return pure 5D tensor [Batch, Channels, Depth, Height, Width]
     return torch.from_numpy(recorte).unsqueeze(0).unsqueeze(0)
 
-def tejer_micro_cubo_4d(t_pre, t_post, size=32):
+def weave_4d_micro_cube(t_pre, t_post, size=32):
     """ Compresses to 32x32x32 parametrically forging the 3 Functional Channels. """
     # BASIC CO-REGISTRATION: If pre and post MRIs differ in size, align Pre to Post.
     if t_pre.shape != t_post.shape:
@@ -60,7 +60,7 @@ def tejer_micro_cubo_4d(t_pre, t_post, size=32):
     
     return torch.cat([c1, c2, c3], dim=1).squeeze(0) # Dense tensor [3, 32, 32, 32]
 
-def procesar_dataset():
+def process_dataset():
     df_boxes = pd.read_excel(PATH_BOXES)
     successes = 0
     
@@ -95,8 +95,8 @@ def procesar_dataset():
         # 3. Processing if both phases were found
         if path_pre and path_post:
             try:
-                v_pre = obtener_volumen_3d(path_pre)
-                v_post = obtener_volumen_3d(path_post)
+                v_pre = get_3d_volume(path_pre)
+                v_post = get_3d_volume(path_post)
                 
                 # Coordinates (0-indexed adjustment)
                 coords = (int(fila['Start Slice'])-1, int(fila['End Slice']), 
@@ -104,11 +104,11 @@ def procesar_dataset():
                           int(fila['Start Column'])-1, int(fila['End Column']))
 
                 # 1. Anatomical extraction (Pre-aligned local Crops)
-                t_post_roi = recortar_roi_con_padding(v_post, coords)
-                t_pre_roi = recortar_roi_con_padding(v_pre, coords)
+                t_post_roi = crop_roi_with_padding(v_post, coords)
+                t_pre_roi = crop_roi_with_padding(v_pre, coords)
 
                 # 2. Mathematical construction of the 4D Bio-Lattice
-                micro_cubo = tejer_micro_cubo_4d(t_pre_roi, t_post_roi, size=SIZE)
+                micro_cubo = weave_4d_micro_cube(t_pre_roi, t_post_roi, size=SIZE)
                 
                 output_path = f"{PATH_OUTPUT}{p_id}_lattice.pt"
                 torch.save(micro_cubo, output_path)
@@ -116,7 +116,7 @@ def procesar_dataset():
                 print(f"✅ Micro-cube successfully generated for {p_id}")
                 
                 if SHOW_VISUALIZER:
-                    visualizar_micro_cubo(output_path)
+                    visualize_micro_cube(output_path)
                 
             except Exception as e:
                 print(f"Error processing volumes for {p_id}: {e}")
@@ -128,4 +128,4 @@ def procesar_dataset():
     print(f"\n✨ Process finished. {successes} micro-cubes generated in {PATH_OUTPUT}")
 
 if __name__ == "__main__":
-    procesar_dataset()
+    process_dataset()

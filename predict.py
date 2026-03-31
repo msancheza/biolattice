@@ -5,13 +5,13 @@ from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, confusi
 from torch.utils.data import DataLoader, random_split
 
 # Import the NEW robust architecture (3D-ResNet)
-from train import RedMicroCubo3Ch, BioLatticeDataset, PATH_CLINICAL, PATH_CUBOS
+from train import BioLattice3DResNet, BioLatticeDataset, PATH_CLINICAL, PATH_CUBOS
 
 # Threshold over sigmoid output (0–1). Higher reduces false positives; raises false negatives.
 UMBRAL_MALIGNIDAD = 0.75
 
 
-def predecir_paciente(p_id):
+def predict_patient(p_id):
     # 1. File Paths (Pointing to the Binary version)
     PATH_CUBO = f'datasets/micro_cubos/{p_id}_lattice.pt'
     PATH_MODELO = 'datasets/modelo/biolattice_3dresnet_binary.pth'
@@ -25,7 +25,7 @@ def predecir_paciente(p_id):
 
     # 2. Load the "Brain" (Model) to CPU for safe local inference
     device = torch.device("cpu")
-    modelo = RedMicroCubo3Ch()
+    modelo = BioLattice3DResNet()
     # Use map_location='cpu' in case it was saved from MPS/CUDA
     modelo.load_state_dict(torch.load(PATH_MODELO, map_location=device, weights_only=True))
     modelo.eval() # Imperative: Turn off dynamic training layers like Dropouts
@@ -62,7 +62,7 @@ def predecir_paciente(p_id):
             "umbral": UMBRAL_MALIGNIDAD * 100
         }
 
-def evaluar_dataset():
+def evaluate_dataset():
     """ Evaluates the model on the full validation set checking ROC, Sensitivity, and Specificity. """
     device = torch.device("cpu")
     PATH_MODELO = 'datasets/modelo/biolattice_3dresnet_binary.pth'
@@ -70,7 +70,7 @@ def evaluar_dataset():
     if not os.path.exists(PATH_MODELO):
         return {"error": "Trained model not found. Run Training first."}
         
-    modelo = RedMicroCubo3Ch()
+    modelo = BioLattice3DResNet()
     modelo.load_state_dict(torch.load(PATH_MODELO, map_location=device, weights_only=True))
     modelo.eval()
     
@@ -127,4 +127,4 @@ def evaluar_dataset():
 if __name__ == "__main__":
     print("Starting Bio-Lattice 4D Virtual Biopsy Mode...")
     paciente_test = input("Enter the Patient ID to scan (e.g., Breast_MRI_001): ").strip()
-    predecir_paciente(paciente_test)
+    predict_patient(paciente_test)

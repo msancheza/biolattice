@@ -190,9 +190,9 @@ with tab3:
                     sys.path.append(BASE_DIR)
                 
                 # Import dynamically to ensure the latest weights are evaluated 
-                from predict import evaluar_dataset
+                from predict import evaluate_dataset
                 
-                res = evaluar_dataset()
+                res = evaluate_dataset()
                 
                 if "error" in res:
                     st.error(res["error"])
@@ -234,8 +234,8 @@ with tab4:
                     if BASE_DIR not in sys.path:
                         sys.path.append(BASE_DIR)
                         
-                    from predict import predecir_paciente
-                    res = predecir_paciente(patient_id.strip())
+                    from predict import predict_patient
+                    res = predict_patient(patient_id.strip())
                     
                     if not res:
                         st.error("Unknown error executing prediction script.")

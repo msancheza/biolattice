@@ -1,20 +1,20 @@
-# --- Procesamiento de Imágenes Médicas ---
+# --- Medical Image Processing ---
 pydicom>=2.4.3
 numpy>=1.26.0
 
-# --- Manejo de Datos y Excel ---
+# --- Data Management and Excel ---
 pandas>=2.2.0
 openpyxl>=3.1.2
 
-# --- Visualización (3.9+ tiene wheels para Python 3.13 en macOS) ---
+# --- Visualization (3.9+ has wheels for Python 3.13 on macOS) ---
 matplotlib>=3.9.0
 seaborn>=0.13.0
 
-# --- Métricas y evaluación ---
+# --- Metrics and Evaluation ---
 scikit-learn>=1.3.0
 
 # --- Motor de IA ---
-# Versiones compatibles con PyPI actual. Para CPU-only: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Versions compatible with the current PyPI. For CPU-only: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 torch==2.6.0
 torchvision==0.21.0
 

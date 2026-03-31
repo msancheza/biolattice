@@ -2,7 +2,7 @@ import torch
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 
-# Paleta minimalista (fondo neutro + acentos suaves por canal)
+# Minimalist palette (neutral background + soft accents per channel)
 _STYLE = {
     "fig_bg": "#e6e8ed",
     "card_face": "#ffffff",
@@ -11,21 +11,21 @@ _STYLE = {
     "subtitle": "#64748b",
     "cmaps": ["gray", "magma", "cividis"],
     "tags": [
-        {"code": "C1", "label": "Estructura", "bg": "#ccfbf1", "edge": "#2dd4bf", "fg": "#0f766e"},
-        {"code": "C2", "label": "Varianza", "bg": "#fef3c7", "edge": "#f59e0b", "fg": "#b45309"},
-        {"code": "C3", "label": "Cinética", "bg": "#e0e7ff", "edge": "#818cf8", "fg": "#3730a3"},
+        {"code": "C1", "label": "Structure", "bg": "#ccfbf1", "edge": "#2dd4bf", "fg": "#0f766e"},
+        {"code": "C2", "label": "Variance", "bg": "#fef3c7", "edge": "#f59e0b", "fg": "#b45309"},
+        {"code": "C3", "label": "Kinetics", "bg": "#e0e7ff", "edge": "#818cf8", "fg": "#3730a3"},
     ],
 }
 
 
-def visualizar_micro_cubo(ruta_tensor):
+def visualize_micro_cube(ruta_tensor):
     cubo = torch.load(ruta_tensor, map_location="cpu")
     slice_idx = 16
 
     fig, axes = plt.subplots(1, 3, figsize=(14, 5.2), facecolor=_STYLE["fig_bg"])
 
     fig.suptitle(
-        "Micro-cubo multimodal · rebanada axial media",
+        "Multi-modal Micro-cube · Middle Axial Slice",
         fontsize=15,
         fontweight=600,
         color=_STYLE["title"],
@@ -33,9 +33,9 @@ def visualizar_micro_cubo(ruta_tensor):
     )
 
     titulos_largos = [
-        "Canal 1 · máx. intensidad",
-        "Canal 2 · varianza local",
-        "Canal 3 · wash-in (post − pre)",
+        "Channel 1 · max intensity",
+        "Channel 2 · local variance",
+        "Channel 3 · wash-in (post − pre)",
     ]
 
     for i, ax in enumerate(axes):
@@ -45,7 +45,7 @@ def visualizar_micro_cubo(ruta_tensor):
         im = ax.imshow(capa, cmap=_STYLE["cmaps"][i], interpolation="nearest")
         ax.axis("off")
 
-        # Tag superior (pill)
+        # Top tag (pill)
         ax.text(
             0.04,
             0.96,
@@ -70,7 +70,7 @@ def visualizar_micro_cubo(ruta_tensor):
         cb.outline.set_edgecolor(_STYLE["card_edge"])
         cb.ax.tick_params(colors=_STYLE["subtitle"], labelsize=8)
 
-        # Tarjeta inferior (pie del panel)
+        # Bottom card (panel footer)
         ax.text(
             0.5,
             -0.065,
@@ -91,7 +91,7 @@ def visualizar_micro_cubo(ruta_tensor):
 
     plt.subplots_adjust(top=0.88, bottom=0.18, left=0.05, right=0.96, wspace=0.28)
 
-    # Marcos tipo tarjeta detrás de cada panel
+    # Card-like frames behind each panel
     for ax in axes:
         pos = ax.get_position()
         pad_x, pad_y = 0.01, 0.015
@@ -113,4 +113,4 @@ def visualizar_micro_cubo(ruta_tensor):
 
     plt.show()
 
-# Uso: visualizar_micro_cubo('datasets/micro_cubos/Breast_MRI_001_lattice.pt')
+# Usage: visualize_micro_cube('datasets/micro_cubos/Breast_MRI_001_lattice.pt')

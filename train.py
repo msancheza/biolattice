@@ -66,7 +66,7 @@ class BioLatticeDataset(Dataset):
         
         return cubo, torch.tensor([label], dtype=torch.float32) # [1] shape
 
-class BloqueResidual3D(nn.Module):
+class ResidualBlock3D(nn.Module):
     """ 3D-ResNet Core: Prevents vanishing gradient degradation """
     def __init__(self, in_canales, out_canales=None):
         super().__init__()
@@ -93,7 +93,7 @@ class BloqueResidual3D(nn.Module):
     def forward(self, x):
         return self.relu(self.shortcut(x) + self.conv(x)) # Residual connection ('+') is critical
 
-class RedMicroCubo3Ch(nn.Module):
+class BioLattice3DResNet(nn.Module):
     """ Parametric architecture matching technical_pipeline.md (Optimized 3D-ResNet) """
     def __init__(self):
         super().__init__()
@@ -102,11 +102,11 @@ class RedMicroCubo3Ch(nn.Module):
             nn.BatchNorm3d(32),
             nn.ReLU()
         )
-        self.capa1 = BloqueResidual3D(32, 64)
+        self.capa1 = ResidualBlock3D(32, 64)
         # Substitution of MaxPool3d for Conv3d with stride to avoid MPS crash:
         self.pool1 = nn.Conv3d(64, 64, kernel_size=2, stride=2) 
         
-        self.capa2 = BloqueResidual3D(64, 128)
+        self.capa2 = ResidualBlock3D(64, 128)
         self.pool2 = nn.Conv3d(128, 128, kernel_size=2, stride=2) 
         
         # Classification tail prevents spatial structure loss
@@ -126,7 +126,7 @@ class RedMicroCubo3Ch(nn.Module):
         return self.clasificador(x)
 
 # --- 4. ROBUST TRAINING CYCLE ---
-def entrenar():
+def train_model():
     # Instantiate dataset handlers (True for Train, False for Val to prevent augmentation leakage)
     dataset_train = BioLatticeDataset(PATH_CLINICAL, PATH_CUBOS, augment=True)
     dataset_val = BioLatticeDataset(PATH_CLINICAL, PATH_CUBOS, augment=False)
@@ -149,7 +149,7 @@ def entrenar():
     device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     print(f"🖥️  Sending Bio-Lattice 4D architecture to hardware accelerator: {device}")
     
-    modelo = RedMicroCubo3Ch().to(device) # <--- Trnasfer Residual Architecture to VRAM
+    modelo = BioLattice3DResNet().to(device) # <--- Transfer Residual Architecture to VRAM
     
     # 1. Binary Loss Function (BCEWithLogitsLoss)
     # Mathematically penalize False Negatives (If misclassified benign, gradient punishes much harder)
@@ -200,7 +200,7 @@ def entrenar():
         val_loss = val_loss / len(val_loader)
             
         # Print telemetry
-        print(f"Época [{epoch+1}/{EPOCHS}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {scheduler.get_last_lr()[0]:.6f}")
+        print(f"Epoch [{epoch+1}/{EPOCHS}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | LR: {scheduler.get_last_lr()[0]:.6f}")
         
         # Save the best model natively via validation score (manual Early Stopping)
         if val_loss < best_val_loss:
@@ -211,4 +211,4 @@ def entrenar():
     print("✅ 3D-ResNet Training finished empirically and best weights saved locally.")
 
 if __name__ == "__main__":
-    entrenar()
+    train_model()
