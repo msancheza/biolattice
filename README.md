@@ -68,13 +68,13 @@ graph TD
     classDef net fill:#fdf2e9,stroke:#e74c3c,stroke-width:2px,color:#78281f;
 
     %% 1. Raw DICOM Sequences
-    subgraph Phase 1: Duke MRI Dataset
+    subgraph phase1 ["Phase 1 - Duke MRI dataset"]
         PRE["Pre-Contrast Phase <br/> V_pre"]:::raw
         POST["Post-Contrast Phase <br/> V_post"]:::raw
     end
 
     %% 2. Pairing + ROI (no rigid registration in code)
-    subgraph Phase 2: Phase pairing and ROI
+    subgraph phase2 ["Phase 2 - Phase pairing and ROI"]
         SEL["PRE/POST folders <br/> SeriesDescription heuristics (Duke)"]:::process
         ROI["Same 3D box + ~20% halo <br/> from Annotation_Boxes.xlsx"]:::process
     end
@@ -84,10 +84,10 @@ graph TD
     SEL --> ROI
 
     %% 3. The Tensor Weaver
-    subgraph Phase 3: Compress to 32³ (weave)
+    subgraph phase3 ["Phase 3 - Weave to 32 x 32 x 32"]
         C1["Channel 1: Structure <br/> Adaptive Max Pooling"]:::process
-        C2["Channel 2: Local heterogeneity <br/> pooled var E[X²]−E[X]²"]:::process
-        C3["Channel 3: Kinetics <br/> pooled post − pre (pre resized if shape mismatch)"]:::process
+        C2["Channel 2: Local heterogeneity <br/> pooled var E[X^2] - E[X]^2"]:::process
+        C3["Channel 3: Kinetics <br/> pooled post - pre (pre resized if shape mismatch)"]:::process
     end
 
     ROI --> C1
@@ -95,7 +95,7 @@ graph TD
     ROI --> C3
 
     %% 4. Final Output
-    CUB{"(Bio-Lattice Tensor) <br/> 3 Channels x 32³ Pixels"}:::tensor
+    CUB{"(Bio-Lattice Tensor) <br/> 3 ch x 32 x 32 x 32"}:::tensor
     C1 --> CUB
     C2 --> CUB
     C3 --> CUB
@@ -112,6 +112,21 @@ graph TD
 3. **`python predict.py`** — Performs Virtual Biopsy inference for a specific `Patient ID`.
 4. **`streamlit run dashboard/app.py`** — Launches the interactive UI orchestrator to handle the full pipeline and dataset evaluations visually.
 
+## Why this direction matters (potential & iteration)
+
+The **core bet** of Bio-Lattice is to **separate** two problems: (1) turning large, multi-phase breast MRI into a **small, task-aware tensor** that still carries structure, heterogeneity, and enhancement dynamics, and (2) training a **light** 3D model that can iterate quickly on consumer hardware. That split keeps the research loop cheap: you can revisit labels, augmentations, or heads without always paying for full-volume training.
+
+The repo today is a **deliberately minimal** slice of that idea (Duke heuristics, simple ROI logic, no full registration). **Improving each phase over time** is the main lever to strengthen the project—not rewriting everything at once, but tightening the weakest link:
+
+| Area | How further work could help |
+|------|-----------------------------|
+| **Phase pairing & geometry** | Rigid/deformable registration, confidence when multiple series match, or explicit series UID config for new cohorts would make the kinetics channel more trustworthy across sites. |
+| **Intensities & physics** | Applying DICOM rescale where appropriate, or normalization tied to acquisition parameters, could improve cross-scanner robustness before or after the weave. |
+| **Weave design** | Different resolutions (e.g. 48³), extra channels (true radiomics blocks, T1w context), or learnable downsampling could raise the ceiling without abandoning the “micro-cube” philosophy. |
+| **Labels & evaluation** | Pathology-aligned targets, external validation, and patient-level splits documented in the repo would align claims with clinical meaning. |
+| **Training** | Architecture search, calibration of thresholds, or uncertainty estimates could sit on top of the same tensors without changing the green-AI story. |
+
+None of that is required to **run or extend** this prototype; it is a **roadmap-shaped** note so contributors know where effort pays off next.
 
 ## Medical Disclaimer
 
