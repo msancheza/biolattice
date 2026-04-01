@@ -17,10 +17,10 @@ def predict_patient(p_id):
     PATH_MODELO = 'datasets/modelo/biolattice_3dresnet_binary.pth'
 
     if not os.path.exists(PATH_CUBO):
-        print(f"❌ Error: Tensor not found for patient {p_id}. Run main.py first.")
+        print(f"Error: Tensor not found for patient {p_id}. Run main.py first.")
         return {"error": f"Medical tensor missing for patient {p_id}. Make sure Data Extraction ran."}
     if not os.path.exists(PATH_MODELO):
-        print("❌ Error: Trained model not found. Run train.py first.")
+        print("Error: Trained model not found. Run train.py first.")
         return {"error": "Trained 3D-ResNet model not found. Make sure Model Training completed."}
 
     # 2. Load the "Brain" (Model) to CPU for safe local inference
@@ -45,13 +45,13 @@ def predict_patient(p_id):
         p_mal = torch.sigmoid(logit_crudo).item()
         probabilidad_malignidad = p_mal * 100
 
-        print(f"\n--- 📊 4D Oncological Evaluation for Patient: {p_id} ---")
+        print(f"\n--- 4D Oncological Evaluation for Patient: {p_id} ---")
         print(f"   (Positive threshold: ≥ {UMBRAL_MALIGNIDAD * 100:.0f}%)")
 
         if p_mal >= UMBRAL_MALIGNIDAD:
-            print(f"🚦 AI DIAGNOSIS: POSITIVE (HIGH RISK OF MALIGNANT CANCER)")
+            print(f"=> AI DIAGNOSIS: POSITIVE (HIGH RISK OF MALIGNANT CANCER)")
         else:
-            print(f"✅ AI DIAGNOSIS: NEGATIVE (LIKELY BENIGN TISSUE)")
+            print(f"=> AI DIAGNOSIS: NEGATIVE (LIKELY BENIGN TISSUE)")
 
         print(f"🔬 Malignancy Probability Index: {probabilidad_malignidad:.2f}%")
         print(f"----------------------------------------------------------------")

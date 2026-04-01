@@ -119,7 +119,7 @@ def process_dataset():
                 output_path = f"{PATH_OUTPUT}{p_id}_lattice.pt"
                 torch.save(micro_cubo, output_path)
                 successes += 1
-                print(f"✅ Micro-cube successfully generated for {p_id}")
+                print(f"Micro-cube successfully generated for {p_id}")
                 
                 if SHOW_VISUALIZER:
                     visualize_micro_cube(output_path)
