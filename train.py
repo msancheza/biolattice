@@ -42,9 +42,9 @@ class BioLatticeDataset(Dataset):
         fila = self.data_info.iloc[idx]
         p_id = fila['Patient ID']
         
-        # Binary Classification Logic (0: Benign, 1: Confirmed Malignant)
-        # Assuming if 'Mol Subtype' > 0 it is a malignant cancer.
-        # BCEWithLogits requires Float variables for tensor [1]
+        # Binary target from Duke Excel "Mol Subtype" only (no pathology text in code):
+        #   1.0 if Mol Subtype > 0, else 0.0. Rows with NaN Mol Subtype are excluded in __init__.
+        # README "Training labels" section documents this proxy vs. clinical wording.
         label = 1.0 if float(fila['Mol Subtype']) > 0 else 0.0
         
         # Load the cube

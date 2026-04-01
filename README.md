@@ -1,8 +1,19 @@
 # microCube (Bio-Lattice)
 
-Converts raw breast MRI volumes (DICOM) into highly compact **32×32×32** tensors with **3 channels**: post-contrast **structure** (adaptive max pool), **local heterogeneity** (pooled variance **E[X²]−E[X]²** per micro-cell—related to texture but **without** explicit GLCM or LBP), and **kinetics** (pooled post − pre). This codebase trains a custom **3D-ResNet** on those tensors for binary classification: **Benign vs. Malignant**. 
+Converts raw breast MRI volumes (DICOM) into highly compact **32×32×32** tensors with **3 channels**: post-contrast **structure** (adaptive max pool), **local heterogeneity** (pooled variance **E[X²]−E[X]²** per micro-cell—related to texture but **without** explicit GLCM or LBP), and **kinetics** (pooled post − pre). This codebase trains a custom **3D-ResNet** on those tensors for a **binary target** described in clinical shorthand as *benign vs. malignant*—but **operationally defined from the Duke spreadsheet** (see [Training labels](#training-labels-ground-truth) below).
 
 The micro-cube itself is a powerful **input representation**: with different clinical labels and a modified classification head (e.g., multi-class molecular subtypes), it could be adapted to other diagnostic tasks, subject to cohort size and data availability.
+
+### Training labels (ground truth)
+
+Training and evaluation use **`datasets/Clinical_and_Other_Features.xlsx`** (loaded with `header=1`, as in the Duke TCIA companion table). **Only rows with a non-null `Mol Subtype` value are kept**; patients without that field never enter the training set.
+
+| Code label | Rule in `train.py` | Meaning |
+|------------|-------------------|---------|
+| **0** | `Mol Subtype ≤ 0` | “Negative” class in experiments |
+| **1** | `Mol Subtype > 0` | “Positive” class in experiments |
+
+This is a **pragmatic proxy**: it maps a numeric **molecular subtype** column to a binary target. It is **not** wired to a free-text pathology or imaging report inside this repo. Metrics (AUC, accuracy, etc.) therefore measure separability under **this rule**, not an abstract gold standard for every possible definition of malignancy. For other institutions or papers, swap in labels from your own approved reference (e.g., biopsy-confirmed BIRADS, pT stage) and adjust `BioLatticeDataset` accordingly.
 
 ## 🌱 Green AI & Computational Efficiency
 
@@ -79,7 +90,7 @@ graph TD
 
     %% 5. Downstream Inference
     RES(["3D-ResNet Architecture"]):::net
-    LOSS("Ground Truth Calibration <br/> Biopsy via BCEWithLogitsLoss")
+    LOSS("Supervision: Duke Mol Subtype <br/> binary rule + BCEWithLogitsLoss")
 
     CUB ==> RES
     RES -.-> LOSS

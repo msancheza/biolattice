@@ -85,7 +85,7 @@ with tab_about:
     **Bio-Lattice 4D** (*microCube*) converts raw breast MRI volumes (DICOM) into highly compact **32×32×32 4D micro-cubes**. 
     These volumetric tensors capture the tumor's foundational structure, **local heterogeneity** (pooled **E[X²]−E[X]²** per micro-cell—texture-like signal without explicit GLCM/LBP), and pre/post contrast kinetics across **3 independent spatial channels**.
     
-    The orchestrator trains a custom **3D-ResNet Deep Learning architecture** over these tensors to perform a specialized clinical binary classification task: **Benign vs. Malignant**.
+    The orchestrator trains a custom **3D-ResNet** on these tensors using a **binary target derived in code** from the Duke file **`Clinical_and_Other_Features.xlsx`**: column **`Mol Subtype`** — class **1** if **`Mol Subtype > 0`**, class **0** if **`≤ 0`**; rows with missing **`Mol Subtype`** are **dropped** (they do not train as benign). This is a **spreadsheet-level proxy** related to molecular subtype, **not** a direct biopsy report field in this codebase. Metrics reflect that rule; for research claims, align wording with this definition or replace labels in `BioLatticeDataset`.
     
     ### ⚙️ Pipeline Lifecycle:
     1. **Data Extraction:** Parses DICOM cohort sequences, algorithmically crops the tumor Region of Interest (ROI), and serializes dense `.pt` tensors.
