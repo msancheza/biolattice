@@ -1,6 +1,6 @@
 # microCube (Bio-Lattice)
 
-Converts raw breast MRI volumes (DICOM) into highly compact **32×32×32 4D micro-cubes** with **3 independent channels** (structural foundation, 3D texture variance/GLCM, and pre/post contrast kinetics). Currently, this codebase trains a custom **3D-ResNet neural network** over these tensors for a specialized clinical binary classification task: **Benign vs. Malignant**. 
+Converts raw breast MRI volumes (DICOM) into highly compact **32×32×32** tensors with **3 channels**: post-contrast **structure** (adaptive max pool), **local heterogeneity** (pooled variance **E[X²]−E[X]²** per micro-cell—related to texture but **without** explicit GLCM or LBP), and **kinetics** (pooled post − pre). This codebase trains a custom **3D-ResNet** on those tensors for binary classification: **Benign vs. Malignant**. 
 
 The micro-cube itself is a powerful **input representation**: with different clinical labels and a modified classification head (e.g., multi-class molecular subtypes), it could be adapted to other diagnostic tasks, subject to cohort size and data availability.
 
@@ -63,7 +63,7 @@ graph TD
     %% 3. The Tensor Weaver
     subgraph Phase 3: 4D Multi-Modal Forging - The Weaver
         C1["Channel 1: Structure <br/> Adaptive Max Pooling"]:::process
-        C2["Channel 2: Radiomic Variance <br/> E X² - E X ²"]:::process
+        C2["Channel 2: Local heterogeneity <br/> pooled var E[X²]−E[X]²"]:::process
         C3["Channel 3: Temporal Kinetics <br/> Subtraction V_post - V_pre"]:::process
     end
 
@@ -85,7 +85,7 @@ graph TD
     RES -.-> LOSS
 ```
 
-2. **`python train.py`** — Trains the `RedMicroCubo3Ch` residual classifier natively and saves the optimal model weights to `datasets/modelo/biolattice_3dresnet_binary.pth`.
+2. **`python train.py`** — Trains the `BioLattice3DResNet` residual classifier natively and saves the optimal model weights to `datasets/modelo/biolattice_3dresnet_binary.pth`.
 3. **`python predict.py`** — Performs Virtual Biopsy inference for a specific `Patient ID`.
 4. **`streamlit run dashboard/app.py`** — Launches the interactive UI orchestrator to handle the full pipeline and dataset evaluations visually.
 

@@ -83,13 +83,13 @@ with tab_about:
     st.markdown("## 🧬 Bio-Lattice 4D: Project Overview")
     st.markdown("""
     **Bio-Lattice 4D** (*microCube*) converts raw breast MRI volumes (DICOM) into highly compact **32×32×32 4D micro-cubes**. 
-    These volumetric tensors capture the tumor's foundational structure, 3D texture variance (GLCM/LBP3D), and pre/post contrast intensity across **3 independent spatial channels**.
+    These volumetric tensors capture the tumor's foundational structure, **local heterogeneity** (pooled **E[X²]−E[X]²** per micro-cell—texture-like signal without explicit GLCM/LBP), and pre/post contrast kinetics across **3 independent spatial channels**.
     
     The orchestrator trains a custom **3D-ResNet Deep Learning architecture** over these tensors to perform a specialized clinical binary classification task: **Benign vs. Malignant**.
     
     ### ⚙️ Pipeline Lifecycle:
     1. **Data Extraction:** Parses DICOM cohort sequences, algorithmically crops the tumor Region of Interest (ROI), and serializes dense `.pt` tensors.
-    2. **Model Training:** Dynamically trains the `RedMicroCubo3Ch` residual classifier efficiently leveraging Apple Silicon (MPS) hardware acceleration, Z-Score distribution modeling, and aggressive False Negative penalization thresholds.
+    2. **Model Training:** Dynamically trains the `BioLattice3DResNet` residual classifier efficiently leveraging Apple Silicon (MPS) hardware acceleration, Z-Score distribution modeling, and aggressive False Negative penalization thresholds.
     3. **Clinical Validation:** Evaluates inference strictness against an isolated 20% dataset to retrieve global Accuracy, ROC AUC, Sensitivity, and Specificity metrics.
     4. **Virtual Biopsy (Inference):** Predicts malignancy risk probability pixel-by-pixel on single un-seen patient tensors natively.
     
@@ -100,7 +100,7 @@ with tab_about:
 # TAB 1: DATA EXTRACTION
 with tab1:
     st.markdown("### Prepare 4D Micro-Cubes")
-    st.markdown("Processes raw MRI/CT patient scans into volumetric tensors using LBP3D/GLCM feature extraction.")
+    st.markdown("Processes raw MRI scans into volumetric tensors: ROI crop, co-register pre/post to a common grid, then three adaptive-pooling channels (structure, pooled variance, wash-in).")
     
     st.write("") # Spacer
     if st.button("Run Data Extraction (main.py)", use_container_width=True):
