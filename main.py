@@ -1,10 +1,16 @@
+"""
+Micro-cube factory: Duke-oriented DICOM pairing, shared ROI crop, and 32³ weave.
+
+Registration is limited to trilinear resize of the pre ROI to the post ROI shape when
+dims differ; see README *What main.py actually does* for series heuristics, ROI
+indexing, and intensity handling.
+"""
 import os
 import pandas as pd
 import pydicom
 import numpy as np
 import torch
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 from visualizer import visualize_micro_cube
 
 # --- CONFIGURATION ---

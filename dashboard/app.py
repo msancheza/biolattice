@@ -88,10 +88,10 @@ with tab_about:
     The orchestrator trains a custom **3D-ResNet** on these tensors using a **binary target derived in code** from the Duke file **`Clinical_and_Other_Features.xlsx`**: column **`Mol Subtype`** — class **1** if **`Mol Subtype > 0`**, class **0** if **`≤ 0`**; rows with missing **`Mol Subtype`** are **dropped** (they do not train as benign). This is a **spreadsheet-level proxy** related to molecular subtype, **not** a direct biopsy report field in this codebase. Metrics reflect that rule; for research claims, align wording with this definition or replace labels in `BioLatticeDataset`.
     
     ### ⚙️ Pipeline Lifecycle:
-    1. **Data Extraction:** Parses DICOM cohort sequences, algorithmically crops the tumor Region of Interest (ROI), and serializes dense `.pt` tensors.
+    1. **Data Extraction:** Duke-oriented PRE/POST folder selection (`SeriesDescription` substring rules; same ROI box on both phases; optional trilinear **resize of pre to post** if shapes differ—**not** rigid registration). Saves `[3,32,32,32]` `.pt` tensors. Details: README section **What `main.py` actually does**.
     2. **Model Training:** Dynamically trains the `BioLattice3DResNet` residual classifier efficiently leveraging Apple Silicon (MPS) hardware acceleration, Z-Score distribution modeling, and aggressive False Negative penalization thresholds.
     3. **Clinical Validation:** Evaluates inference strictness against an isolated 20% dataset to retrieve global Accuracy, ROC AUC, Sensitivity, and Specificity metrics.
-    4. **Virtual Biopsy (Inference):** Predicts malignancy risk probability pixel-by-pixel on single un-seen patient tensors natively.
+    4. **Inference:** Patient-level malignancy risk from the micro-cube + trained head (not voxel-level segmentation).
     
     > **⚠️ Medical Disclaimer:**
     > This orchestrator and its underlying diagnostic algorithms are strictly a **Research Prototype**. It is not a certified medical device and must never be utilized for final clinical decisions or standalone patient diagnosis.
@@ -100,7 +100,7 @@ with tab_about:
 # TAB 1: DATA EXTRACTION
 with tab1:
     st.markdown("### Prepare 4D Micro-Cubes")
-    st.markdown("Processes raw MRI scans into volumetric tensors: ROI crop, co-register pre/post to a common grid, then three adaptive-pooling channels (structure, pooled variance, wash-in).")
+    st.markdown("Builds micro-cubes: Duke-style PRE/POST series pick, same ROI on both phases, optional **pre→post trilinear resize** if cropped shapes differ, then three pooled channels (structure, variance, wash-in). **No** explicit rigid registration or `RescaleSlope` in this step.")
     
     st.write("") # Spacer
     if st.button("Run Data Extraction (main.py)", use_container_width=True):

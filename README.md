@@ -45,7 +45,19 @@ Since raw DICOM MRI sequences and the generated 4D tensors weigh hundreds of gig
 
 ## Usage (Core Pipeline)
 
-1. **`python main.py`** — Parses DICOMs, crops the target Region of Interest (with padding), and serializes `.pt` tensors into `datasets/micro_cubos/`.
+1. **`python main.py`** — Builds `datasets/micro_cubos/<PatientID>_lattice.pt` (see below for **exact** behavior and limits).
+
+### What `main.py` actually does
+
+This pipeline is optimized for a **Duke-style TCIA layout** and raw `pydicom` loading. It is **not** a full clinical preprocessing stack.
+
+| Step | Reality |
+|------|--------|
+| **Series choice** | Walks each patient folder, reads one DICOM per subfolder for `SeriesDescription`, then picks **pre** vs **post** with **substring rules** tuned to Duke naming (`pre`, `dyn` without “phase”, vs `1st` / `ph1` / etc.). If several folders match, the **last** match in the walk **wins**—there is no tie-break or UI. Other sites will usually need new rules or manual series mapping. |
+| **3D stack** | Slices are sorted by **`ImagePositionPatient[2]`** and stacked as **`pixel_array`** (`float32`). **`RescaleSlope` / `RescaleIntercept`** are **not** applied here; downstream training applies **per-cube Z-score**, not absolute intensity calibration. |
+| **ROI** | Box comes from **`Annotation_Boxes.xlsx`**: `Start Slice/Row/Column` are treated as **1-based** and shifted by **−1** for NumPy; **`End Slice/Row/Column`** feed Python slice ends as in the current code (verify against your TCIA column definitions if you change cohorts). The same integer box is applied to **both** phases **before** any resize. |
+| **Pre vs post geometry** | There is **no rigid or deformable registration**. After crop, if pre and post tensors differ in shape, **`weave_4d_micro_cube`** only **trilinearly resizes the pre ROI** to match the post ROI volume (see `main.py`). That aligns **grid size**, not guaranteed **anatomy**. Channel 3 (**post − pre**) assumes phases are already comparable within the ROI (as in many research datasets with fixed protocols). |
+| **Output** | A single **`[3, 32, 32, 32]`** tensor per patient: pooled post-contrast structure, pooled local variance on post, and pooled **post − pre** kinetics. |
 
 ```mermaid
 graph TD
@@ -61,21 +73,21 @@ graph TD
         POST["Post-Contrast Phase <br/> V_post"]:::raw
     end
 
-    %% 2. Geometric Extraction
-    subgraph Phase 2: Localization & Registration
-        ALIGN{"Spatial Co-Registration <br/> Artifact Mitigation"}:::process
-        ROI["ROI Bounding Box Extraction <br/> + 20% Context Padding Halo"]:::process
+    %% 2. Pairing + ROI (no rigid registration in code)
+    subgraph Phase 2: Phase pairing and ROI
+        SEL["PRE/POST folders <br/> SeriesDescription heuristics (Duke)"]:::process
+        ROI["Same 3D box + ~20% halo <br/> from Annotation_Boxes.xlsx"]:::process
     end
 
-    PRE --> ALIGN
-    POST --> ALIGN
-    ALIGN --> ROI
+    PRE --> SEL
+    POST --> SEL
+    SEL --> ROI
 
     %% 3. The Tensor Weaver
-    subgraph Phase 3: 4D Multi-Modal Forging - The Weaver
+    subgraph Phase 3: Compress to 32³ (weave)
         C1["Channel 1: Structure <br/> Adaptive Max Pooling"]:::process
         C2["Channel 2: Local heterogeneity <br/> pooled var E[X²]−E[X]²"]:::process
-        C3["Channel 3: Temporal Kinetics <br/> Subtraction V_post - V_pre"]:::process
+        C3["Channel 3: Kinetics <br/> pooled post − pre (pre resized if shape mismatch)"]:::process
     end
 
     ROI --> C1
