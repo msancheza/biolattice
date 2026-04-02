@@ -118,8 +118,10 @@ with tab2:
     try:
         if BASE_DIR not in sys.path:
             sys.path.append(BASE_DIR)
-        from train import EPOCHS, BATCH_SIZE
-        st.info(f"⚙️ Configured for **{EPOCHS} Epochs** (Batch Size: {BATCH_SIZE}).")
+        import config as _cfg
+        st.info(
+            f"⚙️ Configured for **{_cfg.EPOCHS} Epochs** (Batch Size: {_cfg.BATCH_SIZE})."
+        )
     except Exception:
         pass
         

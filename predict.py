@@ -4,38 +4,42 @@ import torch
 from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, confusion_matrix
 from torch.utils.data import DataLoader, random_split
 
-# Import the NEW robust architecture (3D-ResNet)
-from train import BioLattice3DResNet, BioLatticeDataset, PATH_CLINICAL, PATH_CUBOS
+import config
+from train import BioLattice3DResNet, BioLatticeDataset
 
-# Threshold over sigmoid output (0–1). Higher reduces false positives; raises false negatives.
-UMBRAL_MALIGNIDAD = 0.75
+# Threshold over sigmoid (0–1). Alias kept for Spanish-facing callers.
+UMBRAL_MALIGNIDAD = config.MALIGNANCY_PROB_THRESHOLD
 
 
 def predict_patient(p_id):
-    # 1. File Paths (Pointing to the Binary version)
-    PATH_CUBO = f'datasets/micro_cubos/{p_id}_lattice.pt'
-    PATH_MODELO = 'datasets/modelo/biolattice_3dresnet_binary.pth'
+    path_cubo = os.path.join(
+        config.PATH_MICRO_CUBOS, f"{p_id}{config.LATTICE_FILE_SUFFIX}"
+    )
+    path_modelo = config.PATH_MODEL_WEIGHTS
 
-    if not os.path.exists(PATH_CUBO):
+    if not os.path.exists(path_cubo):
         print(f"Error: Tensor not found for patient {p_id}. Run main.py first.")
         return {"error": f"Medical tensor missing for patient {p_id}. Make sure Data Extraction ran."}
-    if not os.path.exists(PATH_MODELO):
+    if not os.path.exists(path_modelo):
         print("Error: Trained model not found. Run train.py first.")
         return {"error": "Trained 3D-ResNet model not found. Make sure Model Training completed."}
 
-    # 2. Load the "Brain" (Model) to CPU for safe local inference
-    device = torch.device("cpu")
+    device = torch.device(config.INFERENCE_DEVICE)
     modelo = BioLattice3DResNet()
-    # Use map_location='cpu' in case it was saved from MPS/CUDA
-    modelo.load_state_dict(torch.load(PATH_MODELO, map_location=device, weights_only=True))
+    modelo.load_state_dict(
+        torch.load(path_modelo, map_location=device, weights_only=True)
+    )
     modelo.eval() # Imperative: Turn off dynamic training layers like Dropouts
     modelo.to(device)
 
     # 3. Prepare the Patient Tensor
-    cubo = torch.load(PATH_CUBO, map_location=device).unsqueeze(0) # [1, 3, 32, 32, 32]
-    # BUGFIX: Strict Z-Score Normalization (identical to what the network saw in train.py)
+    cubo = torch.load(path_cubo, map_location=device).unsqueeze(0)
     std = torch.std(cubo)
-    cubo = (cubo - torch.mean(cubo)) / (std + 1e-8) if std > 0 else cubo
+    cubo = (
+        (cubo - torch.mean(cubo)) / (std + config.NORMALIZE_EPS)
+        if std > 0
+        else cubo
+    )
 
     # 4. Clinical Inference (Binary Virtual Biopsy)
     with torch.no_grad():
@@ -53,7 +57,7 @@ def predict_patient(p_id):
         else:
             print(f"=> AI DIAGNOSIS: NEGATIVE (LIKELY BENIGN TISSUE)")
 
-        print(f"🔬 Malignancy Probability Index: {probabilidad_malignidad:.2f}%")
+        print(f"-- Malignancy Probability Index: {probabilidad_malignidad:.2f}%")
         print(f"----------------------------------------------------------------")
         
         return {
@@ -64,24 +68,32 @@ def predict_patient(p_id):
 
 def evaluate_dataset():
     """ Evaluates the model on the full validation set checking ROC, Sensitivity, and Specificity. """
-    device = torch.device("cpu")
-    PATH_MODELO = 'datasets/modelo/biolattice_3dresnet_binary.pth'
-    
-    if not os.path.exists(PATH_MODELO):
+    device = torch.device(config.INFERENCE_DEVICE)
+    path_modelo = config.PATH_MODEL_WEIGHTS
+
+    if not os.path.exists(path_modelo):
         return {"error": "Trained model not found. Run Training first."}
-        
+
     modelo = BioLattice3DResNet()
-    modelo.load_state_dict(torch.load(PATH_MODELO, map_location=device, weights_only=True))
+    modelo.load_state_dict(
+        torch.load(path_modelo, map_location=device, weights_only=True)
+    )
     modelo.eval()
-    
-    # Recreate the strict Val Loader without data augmentation
-    dataset_val = BioLatticeDataset(PATH_CLINICAL, PATH_CUBOS, augment=False)
-    train_size = int(0.8 * len(dataset_val))
+
+    dataset_val = BioLatticeDataset(
+        config.PATH_CLINICAL, config.PATH_MICRO_CUBOS, augment=False
+    )
+    split = config.TRAIN_VAL_SPLIT_FRACTION
+    train_size = int(split * len(dataset_val))
     val_size = len(dataset_val) - train_size
-    
-    g_val = torch.Generator().manual_seed(42)
-    _, val_dataset = random_split(dataset_val, [train_size, val_size], generator=g_val)
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False)
+
+    g_val = torch.Generator().manual_seed(config.RANDOM_SEED)
+    _, val_dataset = random_split(
+        dataset_val, [train_size, val_size], generator=g_val
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=config.BATCH_SIZE, shuffle=False
+    )
     
     all_preds = []
     all_labels = []

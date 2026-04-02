@@ -24,6 +24,8 @@ Instead of training massive, energy-hungry 3D Convolutional Networks directly on
 - Python 3.10+ (The project locally uses Python 3.13)
 - Duke Cohort type data: `datasets/raw_data/<PatientID>/...`, `datasets/Annotation_Boxes.xlsx`, `datasets/Clinical_and_Other_Features.xlsx`
 
+**Configuration:** Tunable paths, Duke series keywords, training hyperparameters, inference threshold, and model widths are centralized in **`config.py`** (repository root). Edit that file to adjust behavior without hunting through `main.py` / `train.py` / `predict.py`.
+
 ## Installation
 
 ```bash

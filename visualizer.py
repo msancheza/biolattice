@@ -2,6 +2,8 @@ import torch
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
 
+import config
+
 # Minimalist palette (neutral background + soft accents per channel)
 _STYLE = {
     "fig_bg": "#e6e8ed",
@@ -20,7 +22,7 @@ _STYLE = {
 
 def visualize_micro_cube(ruta_tensor):
     cubo = torch.load(ruta_tensor, map_location="cpu")
-    slice_idx = 16
+    slice_idx = config.MICRO_CUBE_SIZE // 2
 
     fig, axes = plt.subplots(1, 3, figsize=(14, 5.2), facecolor=_STYLE["fig_bg"])
 
