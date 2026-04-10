@@ -42,7 +42,8 @@ For testing was used the public **Duke Breast Cancer MRI dataset** from The Canc
 
 Since raw DICOM MRI sequences and the generated 4D tensors weigh hundreds of gigabytes, **they are not included in this code repository** to ensure lightning-fast cloning. 
 
-* **To test the pipeline out-of-the-box:** You can use the pre-compiled tensors provided in the `datasets/examples_microcubos/` folder. Just copy those few `.pt` files into `datasets/micro_cubos/` to instantly run the *Predict* (`predict.py`) or test the Streamlit dashboard on patients `Breast_MRI_001` through `007` without needing to download massive medical archives.
+* **To test the pipeline out-of-the-box:** You can download the pre-compiled tensors directly from **[Hugging Face Datasets](https://huggingface.co/datasets/msancheza/microCube-Duke-Breast-MRI)**.
+* **Alternative Quick Test:** You can also use the few `.pt` files provided in the `datasets/examples_microcubos/` folder. Just copy them into `datasets/micro_cubos/` to instantly run the *Predict* (`predict.py`) or test the Streamlit dashboard on patients `Breast_MRI_001` through `007`.
 * **To reproduce the full research:** You must download the native Duke cohort from TCIA, extract the DICOMs into `datasets/raw_data/<PatientID>/`, and run the Data Extraction Module (`main.py`) to generate your own tensors.
 
 ## Usage (Core Pipeline)
