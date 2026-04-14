@@ -1,18 +1,18 @@
-# Entornos Python
 .venv/
 venv/
 __pycache__/
 *.pyc
 
-# Archivos de Sistema Operativo
 .DS_Store
 
-# Archivos pesados de Machine Learning e Imágenes DICOM
+# Large Machine Learning Files and DICOM Images
 datasets/micro_cubos/
 datasets/raw_data/
 datasets/modelo/
 
-# Tus exclusiones previas
+# Previews
 backup/
 docs/
 scripts/
+v2/
+.env
