@@ -8,7 +8,7 @@ Converts raw breast MRI volumes (DICOM) into highly compact **64×64×64** tenso
 
 ## Current Version
 
-- **v2 (Bio-Lattice):** Active default version focused on **Virtual Aggressiveness Biopsy** from compact DICOM-derived fingerprints (`tensor [3, 64, 64, 64]` + physical metadata), with extraction QA audits (`OK` / `WARNING` / `REVIEW`) and dashboard orchestration.
+- **v2 (Bio-Lattice):** Active default version focused on **Virtual Risk Phenotype Biopsy** from compact DICOM-derived fingerprints (`tensor [3, 64, 64, 64]` + physical metadata), with extraction QA audits (`OK` / `WARNING` / `REVIEW`) and dashboard orchestration.
 
 ## Version History
 
@@ -21,7 +21,7 @@ Converts raw breast MRI volumes (DICOM) into highly compact **64×64×64** tenso
 
 *   **Initial Expectation:** Develop a universal binary classifier for Benign vs. Malignant lesions.
 *   **Data Reality:** The reference dataset (Duke Breast MRI) is an oncological cohort of patients with confirmed cancer. Training a model to "detect" cancer in a database where everyone already has it is not viable.
-*   **Strategic Pivot:** We have evolved Bio-Lattice toward **Virtual Aggressiveness Biopsy**. The system does not predict the presence of cancer, but rather **how aggressive it is**, aligning its predictions with the **Molecular Subtype** reported by pathology as our primary reference base.
+*   **Strategic Pivot:** We have evolved Bio-Lattice toward **Virtual Risk Phenotype Biopsy**. The system does not predict the presence of cancer, but rather estimates the **tumor risk phenotype**, aligning its predictions with the **Molecular Subtype** reported by pathology as our primary reference base.
 *   **Scalability:** With the inclusion of datasets containing concurrent benign cases, this same architecture can easily scale to a full triage system. Currently, it specializes in the most complex clinical task: predicting the internal biology of the tumor from imaging.
 
 ### Technical Improvements (v2)
@@ -158,7 +158,7 @@ graph TD
 ```
 
 2. **`python train.py`** — Trains the `BioLattice3DResNet` residual classifier natively and saves the optimal model weights to `datasets/modelo/biolattice_3dresnet_binary.pth`.
-3. **`python predict.py`** — Interactive inference for one `Patient ID`. Programmatic callers get a dict with English keys, e.g. `aggressiveness_percent`, `high_risk`, `threshold_percent`; `evaluate_dataset()` returns `sensitivity`, `specificity`, `confusion`, `configured_threshold`, etc.
+3. **`python predict.py`** — Interactive inference for one `Patient ID`. Programmatic callers get a dict with English keys, e.g. `aggressiveness_percent` (risk index), `high_risk`, `threshold_percent`; `evaluate_dataset()` returns `sensitivity`, `specificity`, `confusion`, `configured_threshold`, etc.
 4. **`streamlit run dashboard/app.py`** (from **`v2/`**) — Launches the UI orchestrator for extraction, training, validation, and inference.
 
 ## Why this direction matters (potential & iteration)
