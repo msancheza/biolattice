@@ -19,9 +19,9 @@ PATH_RAW = repo_path("datasets", "raw_data")
 PATH_ANNOTATION_BOXES = repo_path("datasets", "Annotation_Boxes.xlsx")
 PATH_MICRO_CUBOS = repo_path("datasets", "micro_cubos")
 PATH_CLINICAL = repo_path("datasets", "Clinical_and_Other_Features.xlsx")
-PATH_MODEL_DIR = repo_path("datasets", "modelo")
+PATH_MODEL_DIR = repo_path("datasets", "model")
 MODEL_WEIGHTS_FILENAME = "biolattice_3dresnet_binary.pth"
-PATH_MODEL_WEIGHTS = repo_path("datasets", "modelo", MODEL_WEIGHTS_FILENAME)
+PATH_MODEL_WEIGHTS = repo_path("datasets", "model", MODEL_WEIGHTS_FILENAME)
 
 LATTICE_FILE_SUFFIX = "_lattice.pt"
 
