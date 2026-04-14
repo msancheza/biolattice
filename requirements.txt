@@ -1,6 +1,7 @@
 # --- Medical Image Processing ---
 pydicom>=2.4.3
 numpy>=1.26.0
+scipy>=1.11.0
 
 # --- Data Management and Excel ---
 pandas>=2.2.0
@@ -20,3 +21,7 @@ torchvision==0.21.0
 
 # --- Dashboard ---
 streamlit>=1.30.0
+
+# --- Scripts (e.g. Hugging Face upload) ---
+python-dotenv>=1.0.0
+huggingface_hub>=0.20.0
