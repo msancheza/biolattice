@@ -13,15 +13,16 @@ _STYLE = {
     "subtitle": "#64748b",
     "cmaps": ["gray", "magma", "cividis"],
     "tags": [
-        {"code": "C1", "label": "Structure", "bg": "#ccfbf1", "edge": "#2dd4bf", "fg": "#0f766e"},
-        {"code": "C2", "label": "Variance", "bg": "#fef3c7", "edge": "#f59e0b", "fg": "#b45309"},
-        {"code": "C3", "label": "Kinetics", "bg": "#e0e7ff", "edge": "#818cf8", "fg": "#3730a3"},
+        {"code": "C1", "label": "Hybrid Str", "bg": "#ccfbf1", "edge": "#2dd4bf", "fg": "#0f766e"},
+        {"code": "C2", "label": "Denoised Het", "bg": "#fef3c7", "edge": "#f59e0b", "fg": "#b45309"},
+        {"code": "C3", "label": "Aligned Kin", "bg": "#e0e7ff", "edge": "#818cf8", "fg": "#3730a3"},
     ],
 }
 
 
-def visualize_micro_cube(ruta_tensor):
-    cubo = torch.load(ruta_tensor, map_location="cpu")
+def visualize_micro_cube(tensor_path, show=True):
+    data_obj = torch.load(tensor_path, map_location="cpu")
+    cube = data_obj['tensor']
     slice_idx = config.MICRO_CUBE_SIZE // 2
 
     fig, axes = plt.subplots(1, 3, figsize=(14, 5.2), facecolor=_STYLE["fig_bg"])
@@ -34,17 +35,17 @@ def visualize_micro_cube(ruta_tensor):
         y=0.97,
     )
 
-    titulos_largos = [
-        "Channel 1 · max intensity",
-        "Channel 2 · local variance",
-        "Channel 3 · wash-in (post − pre)",
+    channel_titles = [
+        "Channel 1 · hybrid (max + avg)",
+        "Channel 2 · denoised heterogeneity",
+        "Channel 3 · aligned wash-in (post − pre)",
     ]
 
     for i, ax in enumerate(axes):
-        capa = cubo[i, slice_idx, :, :].numpy()
+        slice_2d = cube[i, slice_idx, :, :].numpy()
         tag = _STYLE["tags"][i]
 
-        im = ax.imshow(capa, cmap=_STYLE["cmaps"][i], interpolation="nearest")
+        im = ax.imshow(slice_2d, cmap=_STYLE["cmaps"][i], interpolation="nearest")
         ax.axis("off")
 
         # Top tag (pill)
@@ -76,7 +77,7 @@ def visualize_micro_cube(ruta_tensor):
         ax.text(
             0.5,
             -0.065,
-            titulos_largos[i],
+            channel_titles[i],
             transform=ax.transAxes,
             ha="center",
             va="top",
@@ -113,6 +114,8 @@ def visualize_micro_cube(ruta_tensor):
         fig.add_artist(card)
         ax.set_zorder(2)
 
-    plt.show()
+    if show:
+        plt.show()
+    return fig
 
-# Usage: visualize_micro_cube('datasets/micro_cubos/Breast_MRI_001_lattice.pt')
+# Usage: visualize_micro_cube('datasets/micro_cubes/Breast_MRI_001_lattice.pt')
