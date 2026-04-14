@@ -1,6 +1,21 @@
 # microCube (Bio-Lattice) - v2
 
+[![Release](https://img.shields.io/github/v/release/msancheza/biolattice?color=green)](https://github.com/msancheza/biolattice/releases/latest)
+[![License](https://img.shields.io/github/license/msancheza/biolattice)](https://github.com/msancheza/biolattice/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+
 Converts raw breast MRI volumes (DICOM) into highly compact **64×64×64** tensors packed within a **Radiomics Dictionary** containing physical metadata. The tensor features **3 channels**: post-contrast **hybrid structure** (0.5 Max + 0.5 Avg), **denoised heterogeneity** (pooled variance after Gaussian blur), and **registered kinetics** (FFT-aligned post − pre). 
+
+## Current Version
+
+- **v2 (Bio-Lattice):** Active default version focused on **Virtual Aggressiveness Biopsy** from compact DICOM-derived fingerprints (`tensor [3, 64, 64, 64]` + physical metadata), with extraction QA audits (`OK` / `WARNING` / `REVIEW`) and dashboard orchestration.
+
+## Version History
+
+| Version | Status | Description |
+|---------|--------|-------------|
+| **v1** | Released | Initial operational baseline of the pipeline, used for the first public release before the v2 promotion. |
+| **v2** | Current | Consolidates the current project objective: Green-AI micro-cube distillation, FFT-based pre/post alignment, multi-modal training (tensor + metadata), and extraction quality-gate auditing. |
 
 ### 🧬 From Detection to Phenotyping (Expectation vs. Reality)
 
@@ -42,14 +57,11 @@ Instead of training massive, energy-hungry 3D Convolutional Networks directly on
 - Python 3.10+ (The project locally uses Python 3.13)
 - Duke Cohort type data: `datasets/raw_data/<PatientID>/...`, `datasets/Annotation_Boxes.xlsx`, `datasets/Clinical_and_Other_Features.xlsx`
 
-**Configuration:** Paths, Duke series keywords, training hyperparameters, inference threshold, and model widths live in **`v2/config.py`** (run scripts with `v2/` as working directory, or rely on `PROJECT_ROOT` inside that package). Adjust that file instead of scattering magic numbers across `main.py` / `train.py` / `predict.py`.
+**Configuration:** Paths, Duke series keywords, training hyperparameters, inference threshold, and model widths live in **`config.py`**. Adjust that file instead of scattering magic numbers across `main.py` / `train.py` / `predict.py`.
 
 ## Installation
 
-From the **`v2/`** directory:
-
 ```bash
-cd v2
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -178,4 +190,6 @@ To keep claims clinically meaningful, external validation, patient-level split g
 
 ## Medical Disclaimer
 
-This is strictly a **Research Prototype**, not a certified medical device. Do not use for final clinical decisions or standalone patient diagnosis.
+<div align="center">
+🔬 **Research Prototype Only** — Not for clinical use
+</div>

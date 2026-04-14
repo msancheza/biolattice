@@ -8,7 +8,7 @@ __pycache__/
 # Large Machine Learning Files and DICOM Images
 datasets/micro_cubos/
 datasets/raw_data/
-datasets/modelo/
+datasets/model/
 
 # Previews
 backup/
