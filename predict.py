@@ -53,7 +53,7 @@ def predict_patient(p_id):
     with torch.no_grad():
         raw_logit = model(cube, meta_tensor)
         p_positive = torch.sigmoid(raw_logit).item()
-        aggressiveness_percent = p_positive * 100
+        risk_percent = p_positive * 100
 
         print(f"\n--- 4D Oncological Evaluation (Risk Profiling): {p_id} ---")
         print(f"   (Aggressiveness threshold: ≥ {INFERENCE_PROB_THRESHOLD * 100:.0f}%)")
@@ -63,11 +63,11 @@ def predict_patient(p_id):
         else:
             print(f"=> AI DIAGNOSIS: LOWER RISK (LUMINAL A PHENOTYPE)")
 
-        print(f"-- Aggressiveness Index: {aggressiveness_percent:.2f}%")
+        print(f"-- Risk Index: {risk_percent:.2f}%")
         print(f"----------------------------------------------------------------")
         
         return {
-            "aggressiveness_percent": aggressiveness_percent,
+            "risk_percent": risk_percent,
             "high_risk": p_positive >= INFERENCE_PROB_THRESHOLD,
             "threshold_percent": INFERENCE_PROB_THRESHOLD * 100,
         }

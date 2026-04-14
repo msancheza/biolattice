@@ -249,13 +249,13 @@ with tab4:
                         colA, colB = st.columns(2)
                         
                         # Big visual indicator
-                        if res["positivo"]:
+                        if res["high_risk"]:
                             colA.error("🚨 POSITIVE (HIGH MALIGNANCY RISK)")
                         else:
                             colA.success("✅ NEGATIVE (LIKELY BENIGN TISSUE)")
                             
                         # Metric gauge
-                        colB.metric("Malignancy Probability", f"{res['riesgo']:.2f}%")
-                        st.caption(f"Configured Positive Threshold: ≥ {res['umbral']:.0f}%")
+                        colB.metric("Risk Index", f"{res['risk_percent']:.2f}%")
+                        st.caption(f"Configured Positive Threshold: ≥ {res['threshold_percent']:.0f}%")
                 except Exception as e:
                     st.error(f"Failed to execute patient prediction: {str(e)}")

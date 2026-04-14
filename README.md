@@ -158,7 +158,7 @@ graph TD
 ```
 
 2. **`python train.py`** — Trains the `BioLattice3DResNet` residual classifier natively and saves the optimal model weights to `datasets/modelo/biolattice_3dresnet_binary.pth`.
-3. **`python predict.py`** — Interactive inference for one `Patient ID`. Programmatic callers get a dict with English keys, e.g. `aggressiveness_percent` (risk index), `high_risk`, `threshold_percent`; `evaluate_dataset()` returns `sensitivity`, `specificity`, `confusion`, `configured_threshold`, etc.
+3. **`python predict.py`** — Interactive inference for one `Patient ID`. Programmatic callers get a dict with English keys, including `risk_percent` (primary risk score), `high_risk`, and `threshold_percent`; `evaluate_dataset()` returns `sensitivity`, `specificity`, `confusion`, `configured_threshold`, etc.
 4. **`streamlit run dashboard/app.py`** (from **`v2/`**) — Launches the UI orchestrator for extraction, training, validation, and inference.
 
 ## Why this direction matters (potential & iteration)
