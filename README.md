@@ -39,12 +39,12 @@ Converts raw breast MRI volumes (DICOM) into highly compact **64×64×64** tenso
 
 Training and evaluation use the **`Mol Subtype`** column from the Duke clinical file. This label is a real laboratory result, not an estimation.
 
-| Code label | Rule in `train.py` | Meaning |
+| Code label | Rule in `helper.BioLatticeDataset` (`config.MOL_SUBTYPE_POSITIVE_THRESHOLD`) | Meaning |
 |------------|-------------------|---------|
 | **0** | `Mol Subtype = 0` | **Lower Risk** (Luminal A) |
 | **1** | `Mol Subtype > 0` | **High Risk** (Luminal B, HER2+, Triple Negative) |
 
-Training uses **Focal Loss** (tune α / γ in `config.py`) to emphasize **hard examples**, plus **Mish** and **BatchNorm1d** in the head. The image embedding is concatenated with a small **MLP** on **spacing + slice thickness** (see `train.py`).
+Training uses **Focal Loss** (tune α / γ in `config.py`) to emphasize **hard examples**, plus **Mish** and **BatchNorm1d** in the head. The image embedding is concatenated with a small **MLP** on **spacing + slice thickness** (`helper.normalize_metadata`, model in `train.py`).
 
 Metrics reflect how well the **multi-modal** head separates classes under the **`Mol Subtype`** rule — not a universal pathology gold standard.
 
@@ -58,6 +58,17 @@ Instead of training massive, energy-hungry 3D Convolutional Networks directly on
 - Duke Cohort type data: `datasets/raw_data/<PatientID>/...`, `datasets/Annotation_Boxes.xlsx`, `datasets/Clinical_and_Other_Features.xlsx`
 
 **Configuration:** Paths, Duke series keywords, training hyperparameters, inference threshold, and model widths live in **`config.py`**. Adjust that file instead of scattering magic numbers across `main.py` / `train.py` / `predict.py`.
+
+**Helpers:** `helper.py` (DICOM series heuristics, `BioLatticeDataset`, splits, metadata tensor) and **`run_logs.py`** (structured text logs) sit next to the entry scripts; they import `config` only.
+
+### Text logs (`run_logs.py`)
+
+| Logger | Written by | Path (see `config.py`) | Contents |
+|--------|------------|------------------------|----------|
+| **`ExtractionLogWriter`** | `main.py` (`log_event`) | `PATH_LOGS` (`dashboard/extraction_log.txt`) | Append-only lines during DICOM walk, registration, resampling, per-patient QA. |
+| **`TrainingRunLogWriter`** | `train.py` | `PATH_TRAINING_LOG_DIR` / `training_run_YYYYMMDD-HHMMSS.txt` | One file per run: host/runtime, dataset sizes, **train/val label counts**, config snapshot (including imbalance flags), one line per epoch (`train_loss`, `val_loss`, `lr`, `saved_best`, …), optional `note:` lines, and a **`=== Training finished ===`** footer (`duration_seconds`, `epochs_completed`, `best_val_loss`, `status`). |
+
+Training log files are typically **gitignored** (see `.gitignore`); copy them out of the machine if you need them in version control.
 
 ## Installation
 
@@ -77,11 +88,11 @@ Since raw DICOM MRI sequences and the generated 4D tensors weigh hundreds of gig
 
 * **Pre-compiled tensors (third party):** **[Hugging Face Datasets](https://huggingface.co/datasets/msancheza/microCube-Duke-Breast-MRI)** may ship an older layout (e.g. 32³, different folder naming). For **v2**, prefer tensors you generate with this repo’s `main.py` so shape (**64³**), `meta`, and paths match `config.PATH_MICRO_CUBES`.
 * **Quick test (examples):** If you keep example `.pt` files under `datasets/examples_microcubos/`, copy compatible tensors into **`datasets/micro_cubes/`** (see `PATH_MICRO_CUBES` in `config.py`) before `predict.py` or the Streamlit app — only works if the file format matches v2 (dict with `tensor` + `meta`).
-* **Full reproduction:** Download the Duke cohort from TCIA, place DICOMs under `datasets/raw_data/<PatientID>/`, and run **`python main.py`** from the **`v2/`** tree to write `*_lattice.pt` files into `datasets/micro_cubes/`.
+* **Full reproduction:** Download the Duke cohort from TCIA, place DICOMs under `datasets/raw_data/<PatientID>/`, and run **`python main.py`** from the **repository root** to write `*_lattice.pt` files into `datasets/micro_cubes/`.
 
 ## Usage (v2 Pipeline)
 
-1. **`python main.py`** (from **`v2/`**) — Writes `<PatientID>_lattice.pt` under **`datasets/micro_cubes/`** (see `PATH_MICRO_CUBES`).
+1. **`python main.py`** (from the **repository root**) — Writes `<PatientID>_lattice.pt` under **`datasets/micro_cubes/`** (see `PATH_MICRO_CUBES`).
 
 ### Extraction quality gate (operational)
 
@@ -157,9 +168,9 @@ graph TD
     RES -.-> LOSS
 ```
 
-2. **`python train.py`** — Trains the `BioLattice3DResNet` residual classifier natively and saves the optimal model weights to `datasets/modelo/biolattice_3dresnet_binary.pth`.
+2. **`python train.py`** — Trains the `BioLattice3DResNet` residual classifier and saves the best-by-validation weights to **`datasets/model/biolattice_3dresnet_binary.pth`** (see `PATH_MODEL_WEIGHTS` in `config.py`). Per-run telemetry goes to `PATH_TRAINING_LOG_DIR` via `run_logs.TrainingRunLogWriter`.
 3. **`python predict.py`** — Interactive inference for one `Patient ID`. Programmatic callers get a dict with English keys, including `risk_percent` (primary risk score), `high_risk`, and `threshold_percent`; `evaluate_dataset()` returns `sensitivity`, `specificity`, `confusion`, `configured_threshold`, etc.
-4. **`streamlit run dashboard/app.py`** (from **`v2/`**) — Launches the UI orchestrator for extraction, training, validation, and inference.
+4. **`streamlit run dashboard/app.py`** (from the **repository root**) — Launches the UI orchestrator for extraction, training, validation, and inference.
 
 ## Why this direction matters (potential & iteration)
 

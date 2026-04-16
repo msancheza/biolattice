@@ -1,179 +1,22 @@
 import os
 import math
-import glob
-import json
+import time
+from datetime import datetime
 # Mandatory patch for Mac (Apple Silicon): Allows complex 3D operations like MaxPool3d to run softly
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-
-import random
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, Subset
-import pandas as pd
+from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 
 import config
-
-# Re-export for callers that imported these from train (use config directly for new code).
-PATH_CUBES = config.PATH_MICRO_CUBES
-PATH_CLINICAL = config.PATH_CLINICAL
-BATCH_SIZE = config.BATCH_SIZE
-LEARNING_RATE = config.LEARNING_RATE
-EPOCHS = config.EPOCHS
-
-def build_patient_level_split(dataset, train_fraction, seed):
-    """
-    Deterministic patient-level split (train/val) using shuffled dataset indices.
-    Assumes BioLatticeDataset is already deduplicated by Patient ID.
-    """
-    total = len(dataset)
-    train_size = int(train_fraction * total)
-    train_size = max(0, min(train_size, total))
-    val_size = total - train_size
-
-    rng = random.Random(seed)
-    indices = list(range(total))
-    rng.shuffle(indices)
-
-    train_indices = indices[:train_size]
-    val_indices = indices[train_size:]
-    return Subset(dataset, train_indices), Subset(dataset, val_indices), train_size, val_size
-
-# --- 2. CUSTOM DATASET (AUGMENTED VERSION) ---
-class BioLatticeDataset(Dataset):
-    def __init__(self, excel_file, folder, augment=True, allowed_patient_ids=None):
-        self.data_info = pd.read_excel(excel_file, header=config.CLINICAL_EXCEL_HEADER_ROW)
-        self.folder = folder
-        self.augment = augment
-
-        suffix = config.LATTICE_FILE_SUFFIX
-        patient_ids_with_tensor = [
-            f.replace(suffix, "") for f in os.listdir(folder) if f.endswith(suffix)
-        ]
-        self.data_info = self.data_info[
-            self.data_info[config.COL_PATIENT_ID].isin(patient_ids_with_tensor)
-        ]
-
-        self.data_info = self.data_info[self.data_info[config.COL_MOL_SUBTYPE].notna()].copy()
-        # Drop duplicates by Patient ID to ensure complete structural isolation in split
-        self.data_info = self.data_info.drop_duplicates(subset=[config.COL_PATIENT_ID])
-
-        if allowed_patient_ids is not None:
-            self.data_info = self.data_info[
-                self.data_info[config.COL_PATIENT_ID].isin(allowed_patient_ids)
-            ].copy()
-        
-    def __len__(self):
-        return len(self.data_info)
-
-    def __getitem__(self, idx):
-        row = self.data_info.iloc[idx]
-        p_id = row[config.COL_PATIENT_ID]
-
-        label = (
-            1.0
-            if float(row[config.COL_MOL_SUBTYPE]) > config.MOL_SUBTYPE_POSITIVE_THRESHOLD
-            else 0.0
-        )
-
-        data_obj = torch.load(
-            os.path.join(self.folder, f"{p_id}{config.LATTICE_FILE_SUFFIX}")
-        )
-        cube = data_obj['tensor']
-        
-        # --- EXTRACT METADATA ---
-        meta = data_obj.get('meta', {})
-        spacing = meta.get('voxel_spacing', [1.0, 1.0])
-        thickness = meta.get('slice_thickness', 1.0)
-        # Use centralized config to prevent Training-Inference drift
-        meta_tensor = config.normalize_metadata(spacing, thickness)
-
-        
-        # --- DATA AUGMENTATION (If enabled) ---
-        if self.augment:
-            # A. Random flip on Y-axis (right/left)
-            if random.random() > 0.5:
-                cube = torch.flip(cube, dims=[2])
-            
-            # B. Random rotation of 90, 180, or 270 degrees in the Axial plane
-            k = random.randint(0, 3)
-            cube = torch.rot90(cube, k, dims=[2, 3])
-            
-            # C. Add subtle Gaussian Noise to stimulate feature learning (Bio-Lattice v2.3)
-            if random.random() > 0.8:
-                noise = torch.randn_like(cube) * 0.01
-                cube = cube + noise
-
-        std = torch.std(cube)
-        cube = (
-            (cube - torch.mean(cube)) / (std + config.NORMALIZE_EPS)
-            if std > 0
-            else cube
-        )
-        
-        return cube, meta_tensor, torch.tensor([label], dtype=torch.float32) # [1] shape
+import helper
+from run_logs import TrainingRunLogWriter
 
 
-def load_allowed_patient_ids_from_latest_audit():
-    """
-    Reads the latest extraction audit JSONL and returns allowed/excluded patient IDs.
-    If loading fails, returns (None, []) so training can proceed without filtering.
-    """
-    if not getattr(config, "TRAIN_FILTER_BY_AUDIT", False):
-        return None, []
-
-    pattern = os.path.join(config.PATH_EXTRACTION_AUDIT_DIR, "extraction_audit_*.jsonl")
-    paths = glob.glob(pattern)
-    if not paths:
-        print("Audit filter enabled, but no extraction audit file found. Training without audit-based exclusions.")
-        return None, []
-
-    latest_path = max(paths, key=os.path.getmtime)
-    allowed_statuses = set(getattr(config, "TRAIN_ALLOWED_AUDIT_STATUSES", ("OK", "WARNING")))
-    latest_by_patient = {}
-
-    try:
-        with open(latest_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                rec = json.loads(line)
-                pid = rec.get("patient_id")
-                if not pid:
-                    continue
-                latest_by_patient[pid] = rec
-    except Exception as e:
-        print(f"Could not parse extraction audit '{latest_path}': {e}. Training without audit-based exclusions.")
-        return None, []
-
-    if not latest_by_patient:
-        print(f"Extraction audit '{latest_path}' has no patient records. Training without audit-based exclusions.")
-        return None, []
-
-    allowed_ids = []
-    excluded_ids = []
-    for pid, rec in latest_by_patient.items():
-        status = str(rec.get("status", "")).upper()
-        if status in allowed_statuses:
-            allowed_ids.append(pid)
-        else:
-            excluded_ids.append(pid)
-
-    print(
-        f"Audit filter active from {os.path.basename(latest_path)} | "
-        f"allowed: {len(allowed_ids)} | excluded: {len(excluded_ids)} | "
-        f"allowed_statuses={sorted(list(allowed_statuses))}"
-    )
-    if excluded_ids:
-        preview = ", ".join(sorted(excluded_ids)[:20])
-        suffix = " ..." if len(excluded_ids) > 20 else ""
-        print(f"Excluded patient IDs ({len(excluded_ids)}): {preview}{suffix}")
-
-    return set(allowed_ids), excluded_ids
-
+# --- Model architecture ---
 class ResidualBlock3D(nn.Module):
     """3D ResNet-style block."""
     def __init__(self, in_channels, out_channels=None):
@@ -198,10 +41,11 @@ class ResidualBlock3D(nn.Module):
             )
 
     def forward(self, x):
-        return self.relu(self.shortcut(x) + self.conv(x)) # Residual connection ('+') is critical
+        return self.relu(self.shortcut(x) + self.conv(x))
+
 
 class BioLattice3DResNet(nn.Module):
-    """3D-ResNet classifier for micro-cube tensors (spatial size follows config.MICRO_CUBE_SIZE, default 64³)."""
+    """3D-ResNet classifier for micro-cube tensors."""
 
     def __init__(self):
         super().__init__()
@@ -213,25 +57,16 @@ class BioLattice3DResNet(nn.Module):
         )
         self.block1 = ResidualBlock3D(c.RES_BLOCK1_IN, c.RES_BLOCK1_OUT)
         self.pool1 = nn.Conv3d(
-            c.RES_BLOCK1_OUT,
-            c.RES_BLOCK1_OUT,
-            kernel_size=c.POOL_KERNEL,
-            stride=c.POOL_STRIDE,
+            c.RES_BLOCK1_OUT, c.RES_BLOCK1_OUT, kernel_size=c.POOL_KERNEL, stride=c.POOL_STRIDE
         )
 
         self.block2 = ResidualBlock3D(c.RES_BLOCK2_IN, c.RES_BLOCK2_OUT)
         self.pool2 = nn.Conv3d(
-            c.RES_BLOCK2_OUT,
-            c.RES_BLOCK2_OUT,
-            kernel_size=c.POOL_KERNEL,
-            stride=c.POOL_STRIDE,
+            c.RES_BLOCK2_OUT, c.RES_BLOCK2_OUT, kernel_size=c.POOL_KERNEL, stride=c.POOL_STRIDE
         )
 
         self.avgpool_flatten = nn.Sequential(
-            nn.AvgPool3d(
-                kernel_size=c.CLASSIFIER_AVG_POOL_KERNEL,
-                stride=c.CLASSIFIER_AVG_POOL_STRIDE,
-            ),
+            nn.AvgPool3d(kernel_size=c.CLASSIFIER_AVG_POOL_KERNEL, stride=c.CLASSIFIER_AVG_POOL_STRIDE),
             nn.Flatten()
         )
         
@@ -261,145 +96,239 @@ class BioLattice3DResNet(nn.Module):
         m_feat = self.meta_mlp(meta_features)
 
         x_combined = torch.cat([x_img, m_feat], dim=1)
-
         return self.classifier(x_combined)
 
-# --- 4. ROBUST TRAINING CYCLE ---
-def train_model():
-    allowed_patient_ids, _ = load_allowed_patient_ids_from_latest_audit()
 
-    # Instantiate dataset handlers (True for Train, False for Val to prevent augmentation leakage)
-    dataset_train = BioLatticeDataset(
-        PATH_CLINICAL, PATH_CUBES, augment=True, allowed_patient_ids=allowed_patient_ids
-    )
-    dataset_val = BioLatticeDataset(
-        PATH_CLINICAL, PATH_CUBES, augment=False, allowed_patient_ids=allowed_patient_ids
-    )
+# --- Training utilities ---
+class FocalLoss(nn.Module):
+    """Focal loss for addressing class imbalance."""
+    def __init__(self, alpha=0.75, gamma=2.0, pos_weight=None):
+        super().__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        if pos_weight is not None:
+            self.register_buffer("pos_weight", pos_weight)
+
+    def forward(self, inputs, targets):
+        pw = getattr(self, "pos_weight", None)
+        bce_loss = F.binary_cross_entropy_with_logits(
+            inputs, targets, reduction="none", pos_weight=pw
+        )
+        pt = torch.exp(-bce_loss)
+        return (self.alpha * ((1 - pt) ** self.gamma) * bce_loss).mean()
+
+
+class BioLatticeTrainer:
+    """Encapsulates training logic, validation, and logging."""
+
+    def __init__(self, model, train_loader, val_loader, criterion, optimizer, scheduler, device, run_log=None):
+        self.model = model
+        self.train_loader = train_loader
+        self.val_loader = val_loader
+        self.criterion = criterion
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+        self.device = device
+        self.run_log = run_log
+
+        self.best_val_loss = float('inf')
+        self.epochs_without_improve = 0
+
+    @property
+    def log_path(self):
+        return self.run_log.path if self.run_log else None
+
+    def train_epoch(self):
+        self.model.train()
+        running_loss = 0.0
+        for inputs, metas, labels in self.train_loader:
+            inputs, metas, labels = inputs.to(self.device), metas.to(self.device), labels.to(self.device)
+            self.optimizer.zero_grad()
+            outputs = self.model(inputs, metas)
+            loss = self.criterion(outputs, labels)
+            loss.backward()
+            self.optimizer.step()
+            self.scheduler.step()
+            running_loss += loss.item()
+        return running_loss / len(self.train_loader)
+
+    @torch.no_grad()
+    def validate(self):
+        self.model.eval()
+        val_loss = 0.0
+        if len(self.val_loader) == 0:
+            return float("nan")
+        for inputs, metas, labels in self.val_loader:
+            inputs, metas, labels = inputs.to(self.device), metas.to(self.device), labels.to(self.device)
+            outputs = self.model(inputs, metas)
+            loss = self.criterion(outputs, labels)
+            val_loss += loss.item()
+        return val_loss / len(self.val_loader)
+
+    def save_checkpoint(self, path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        torch.save(self.model.state_dict(), path)
+
+    def log_to_file(self, content, mode="a"):
+        if self.run_log:
+            self.run_log.write(content, mode=mode)
+
+
+def train_model():
+    """High-level orchestration for training."""
+    allowed_ids, _ = helper.load_allowed_patient_ids_from_latest_audit()
+    device = helper.get_device()
+    print(f"Hardware accelerator: {device}")
+
+    # 1. Dataset & Split
+    dataset_train = helper.BioLatticeDataset(config.PATH_CLINICAL, config.PATH_MICRO_CUBES, augment=True, allowed_patient_ids=allowed_ids)
+    dataset_val = helper.BioLatticeDataset(config.PATH_CLINICAL, config.PATH_MICRO_CUBES, augment=False, allowed_patient_ids=allowed_ids)
     
     split = config.TRAIN_VAL_SPLIT_FRACTION
-    train_dataset, _, train_size, val_size = build_patient_level_split(
-        dataset_train, split, config.RANDOM_SEED
-    )
-    _, val_dataset, _, _ = build_patient_level_split(
-        dataset_val, split, config.RANDOM_SEED
-    )
-    
-    # Prevent BatchNorm1d crash on the last incomplete batch (size=1).
-    train_loader = DataLoader(
-        train_dataset, batch_size=BATCH_SIZE, shuffle=True, drop_last=True
-    )
-    val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    if getattr(config, "TRAIN_STRATIFIED_SPLIT", False):
+        tr_idx, va_idx, train_size, val_size = helper.build_stratified_train_val_indices(dataset_train, split, config.RANDOM_SEED)
+        train_ds = Subset(dataset_train, tr_idx)
+        val_ds = Subset(dataset_val, va_idx)
+    else:
+        train_ds, _, train_size, val_size = helper.build_patient_level_split(dataset_train, split, config.RANDOM_SEED)
+        _, val_ds, _, _ = helper.build_patient_level_split(dataset_val, split, config.RANDOM_SEED)
+
+    if len(train_ds) == 0:
+        print("Error: train split is empty.")
+        return
+
+    # 2. Sampler & Dataloaders
+    sampler = None
+    if getattr(config, "TRAIN_USE_WEIGHTED_SAMPLER", False):
+        labels = helper.labels_for_subset(train_ds)
+        n_pos = sum(1 for y in labels if y >= 0.5)
+        n_neg = len(labels) - n_pos
+        if n_pos > 0 and n_neg > 0:
+            w_pos, w_neg = 1.0 / n_pos, 1.0 / n_neg
+            weights = [w_pos if y >= 0.5 else w_neg for y in labels]
+            sampler = WeightedRandomSampler(torch.as_tensor(weights, dtype=torch.double), num_samples=len(weights), replacement=True)
+
+    train_loader = DataLoader(train_ds, batch_size=config.BATCH_SIZE, sampler=sampler, shuffle=(sampler is None), drop_last=True)
+    val_loader = DataLoader(val_ds, batch_size=config.BATCH_SIZE, shuffle=False)
+
+    # 3. Model, Loss, Optimizer
+    model = BioLattice3DResNet().to(device)
+    pos_weight = None
+    if getattr(config, "TRAIN_USE_CLASS_POS_WEIGHT", False):
+        labels = helper.labels_for_subset(train_ds)
+        n_pos = sum(1 for y in labels if y >= 0.5)
+        n_neg = len(labels) - n_pos
+        if n_pos > 0 and n_neg > 0:
+            pos_weight = torch.tensor([n_neg / n_pos], dtype=torch.float32)
+
+    criterion = FocalLoss(alpha=config.FOCAL_LOSS_ALPHA, gamma=config.FOCAL_LOSS_GAMMA, pos_weight=pos_weight).to(device)
+    optimizer = optim.AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.ADAMW_WEIGHT_DECAY)
+    scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=config.ONECYCLE_MAX_LR, steps_per_epoch=len(train_loader), epochs=config.EPOCHS)
 
     num_train_batches = len(train_loader)
     num_val_batches = len(val_loader)
-    if num_train_batches == 0:
-        print(
-            "Error: training DataLoader has zero batches (dataset too small for BATCH_SIZE with drop_last=True). "
-            "Lower BATCH_SIZE in config or add more samples."
-        )
-        return
-    
-    # BUGFIX 2: Active GPU Device (Supports Apple Silicon MPS and NVIDIA CUDA)
-    device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-    print(f"Sending Bio-Lattice 4D architecture to hardware accelerator: {device}")
-    
-    model = BioLattice3DResNet().to(device)
-
-    # 1. Focal loss (emphasizes hard examples)
-    class FocalLoss(nn.Module):
-        def __init__(self, alpha=0.75, gamma=2.0):
-            super().__init__()
-            self.alpha = alpha
-            self.gamma = gamma
-
-        def forward(self, inputs, targets):
-            bce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
-            pt = torch.exp(-bce_loss) 
-            return (self.alpha * ((1 - pt) ** self.gamma) * bce_loss).mean()
-
-    criterion = FocalLoss(alpha=config.FOCAL_LOSS_ALPHA, gamma=config.FOCAL_LOSS_GAMMA)
-
-
-    optimizer = optim.AdamW(
-        model.parameters(),
-        lr=LEARNING_RATE,
-        weight_decay=config.ADAMW_WEIGHT_DECAY,
+    train_labels = helper.labels_for_subset(train_ds)
+    val_labels = helper.labels_for_subset(val_ds)
+    n_tr_pos = sum(1 for y in train_labels if y >= 0.5)
+    n_tr_neg = len(train_labels) - n_tr_pos
+    n_va_pos = sum(1 for y in val_labels if y >= 0.5)
+    n_va_neg = len(val_labels) - n_va_pos
+    class_balance_log = (
+        f"train_label_0: {n_tr_neg} | train_label_1: {n_tr_pos}",
+        f"val_label_0: {n_va_neg} | val_label_1: {n_va_pos}",
     )
 
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=config.ONECYCLE_MAX_LR,
-        steps_per_epoch=num_train_batches,
-        epochs=EPOCHS,
-    )
-    
-    print(f"-- Starting Phenotype Classification (High vs. Lower Risk) with {train_size} tensors (Train) and {val_size} (Val)...")
-    
-    best_val_loss = float('inf')
-    early_patience = config.EARLY_STOPPING_PATIENCE
-    early_min_delta = config.EARLY_STOPPING_MIN_DELTA
-    early_start_epoch = config.EARLY_STOPPING_START_EPOCH
-    epochs_without_improve = 0
-    
-    for epoch in range(EPOCHS): 
-        model.train()
-        running_loss = 0.0
-        
-        for i, (inputs, metas, labels) in enumerate(train_loader):
-            inputs, metas, labels = inputs.to(device), metas.to(device), labels.to(device)
+    # 4. Training Cycle
+    run_log = TrainingRunLogWriter.create_new() if getattr(config, "TRAIN_LOG_WRITE_TXT", True) else None
+    trainer = BioLatticeTrainer(model, train_loader, val_loader, criterion, optimizer, scheduler, device, run_log)
 
-            optimizer.zero_grad()
-            outputs = model(inputs, metas)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            
-            # OneCycleLR steps forward per local micro-batch (Not per Epoch)
-            scheduler.step() 
-            
-            running_loss += loss.item()
-            
-        train_loss = running_loss / num_train_batches
-        
-        # --- NEW: Validation Phase ---
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for inputs, metas, labels in val_loader:
-                inputs, metas, labels = inputs.to(device), metas.to(device), labels.to(device)
-                outputs = model(inputs, metas)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
+    t_loop_mono = None
+    epochs_completed = 0
+    early_stopped = False
+    loop_error = None
 
-        if num_val_batches > 0:
-            val_loss = val_loss / num_val_batches
-        else:
-            val_loss = float("nan")
-            
-        # Print telemetry
-        val_disp = f"{val_loss:.4f}" if not math.isnan(val_loss) else "nan (no val batches)"
-        print(
-            f"Epoch [{epoch+1}/{EPOCHS}] | Train Loss: {train_loss:.4f} | Val Loss: {val_disp} | LR: {scheduler.get_last_lr()[0]:.6f}"
+    if run_log:
+        start_iso = datetime.now().isoformat(timespec="seconds")
+        run_log.write_run_header(
+            start_iso=start_iso,
+            device_str=str(device),
+            n_dataset_train=len(dataset_train),
+            n_dataset_val=len(dataset_val),
+            train_size=train_size,
+            val_size=val_size,
+            train_batch_size=config.BATCH_SIZE,
+            train_drop_last=True,
+            train_batches_per_epoch=num_train_batches,
+            val_batches_per_epoch=num_val_batches,
+            class_balance_lines=class_balance_log,
         )
-        
-        # Save the best model natively via validation score (manual Early Stopping)
-        improved = (not math.isnan(val_loss)) and (val_loss < (best_val_loss - early_min_delta))
-        if improved:
-            best_val_loss = val_loss
-            epochs_without_improve = 0
-            os.makedirs(config.PATH_MODEL_DIR, exist_ok=True)
-            torch.save(model.state_dict(), config.PATH_MODEL_WEIGHTS)
-        elif not math.isnan(val_loss):
-            epochs_without_improve += 1
+        print(f"Training run log: {run_log.path}", flush=True)
 
-        if (epoch + 1) >= early_start_epoch and epochs_without_improve >= early_patience:
-            print(
-                f"Early stopping triggered at epoch {epoch+1}: "
-                f"no validation improvement > {early_min_delta:.4f} for {early_patience} consecutive epochs."
+    try:
+        t_loop_mono = time.monotonic()
+        for epoch in range(config.EPOCHS):
+            t_loss = trainer.train_epoch()
+            v_loss = trainer.validate()
+            lr = scheduler.get_last_lr()[0]
+
+            improved = (not math.isnan(v_loss)) and (v_loss < (trainer.best_val_loss - config.EARLY_STOPPING_MIN_DELTA))
+            if improved:
+                trainer.best_val_loss = v_loss
+                trainer.epochs_without_improve = 0
+                trainer.save_checkpoint(config.PATH_MODEL_WEIGHTS)
+            elif not math.isnan(v_loss):
+                trainer.epochs_without_improve += 1
+
+            epochs_completed = epoch + 1
+
+            status_line = (
+                f"Epoch [{epoch+1}/{config.EPOCHS}] | Train Loss: {t_loss:.4f} | Val Loss: {v_loss:.4f} | "
+                f"LR: {lr:.6f} | Improved: {improved}"
             )
-            break
-            
-    print("3D-ResNet Training finished empirically and best weights saved locally.")
+            print(status_line, flush=True)
+            if run_log:
+                run_log.append_epoch_line(
+                    epoch=epochs_completed,
+                    epochs_max=config.EPOCHS,
+                    train_loss=t_loss,
+                    val_loss=v_loss,
+                    lr=float(lr),
+                    saved_best=improved,
+                    best_val_loss=trainer.best_val_loss,
+                    epochs_without_improve=trainer.epochs_without_improve,
+                )
+
+            if (epoch + 1) >= config.EARLY_STOPPING_START_EPOCH and trainer.epochs_without_improve >= config.EARLY_STOPPING_PATIENCE:
+                msg = (
+                    f"Early stopping triggered at epoch {epoch+1}: "
+                    f"no validation improvement > {config.EARLY_STOPPING_MIN_DELTA:.4f} for "
+                    f"{config.EARLY_STOPPING_PATIENCE} consecutive epochs."
+                )
+                print(msg, flush=True)
+                if run_log:
+                    run_log.append_note(msg)
+                early_stopped = True
+                break
+        print("3D-ResNet training finished; best weights saved when validation improved.", flush=True)
+    except Exception as e:
+        loop_error = str(e)
+        print(f"Training failed: {e}", flush=True)
+        trainer.log_to_file(f"note: training exception: {loop_error}")
+        raise
+    finally:
+        if trainer and trainer.run_log and t_loop_mono is not None:
+            end_iso = datetime.now().isoformat(timespec="seconds")
+            duration = time.monotonic() - t_loop_mono
+            status = "failed" if loop_error else ("early_stop" if early_stopped else "completed")
+            trainer.run_log.write_run_footer(
+                end_iso=end_iso,
+                duration_sec=duration,
+                epochs_completed=epochs_completed,
+                best_val_loss=trainer.best_val_loss,
+                early_stopped=early_stopped,
+                status=status,
+                extra=loop_error or "",
+            )
 
 if __name__ == "__main__":
     train_model()

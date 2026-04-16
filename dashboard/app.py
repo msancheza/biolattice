@@ -70,13 +70,14 @@ def run_script(script_name):
 
 # --- STEP-BY-STEP TABS ---
 tabs = st.tabs([
-    "ℹ️ About Project", 
-    "1. Data Extraction •", 
-    "2. Model Training •", 
-    "3. Validation Metrics •", 
-    "4. Patient Inference"
+    "ℹ️ About Project",
+    "1. Data Extraction •",
+    "2. Model Training •",
+    "3. Validation Metrics •",
+    "4. Patient Inference",
+    "5. Config Guide",
 ])
-tab_about, tab1, tab2, tab3, tab4 = tabs
+tab_about, tab1, tab2, tab3, tab4, tab5 = tabs
 
 # TAB 0: ABOUT / README
 with tab_about:
@@ -205,16 +206,16 @@ with tab3:
                     c1, c2, c3, c4 = st.columns(4)
                     c1.metric("Accuracy", f"{res['accuracy']*100:.1f}%")
                     c2.metric("ROC AUC", f"{res['auc']:.3f}")
-                    c3.metric("Sensitivity", f"{res['sensibilidad']*100:.1f}%")
-                    c4.metric("Specificity", f"{res['especificidad']*100:.1f}%")
+                    c3.metric("Sensitivity", f"{res['sensitivity']*100:.1f}%")
+                    c4.metric("Specificity", f"{res['specificity']*100:.1f}%")
                     
                     st.divider()
                     st.markdown("**Confusion Matrix**")
                     col_tn, col_fp, col_fn, col_tp = st.columns(4)
-                    col_tn.metric("True Negatives", res['matriz']['tn'])
-                    col_fp.metric("False Positives", res['matriz']['fp'])
-                    col_fn.metric("False Negatives", res['matriz']['fn'])
-                    col_tp.metric("True Positives", res['matriz']['tp'])
+                    col_tn.metric("True Negatives", res["confusion"]["tn"])
+                    col_fp.metric("False Positives", res["confusion"]["fp"])
+                    col_fn.metric("False Negatives", res["confusion"]["fn"])
+                    col_tp.metric("True Positives", res["confusion"]["tp"])
                     
             except Exception as e:
                 st.error(f"Failed to evaluate dataset: {str(e)}")
@@ -259,3 +260,118 @@ with tab4:
                         st.caption(f"Configured Positive Threshold: ≥ {res['threshold_percent']:.0f}%")
                 except Exception as e:
                     st.error(f"Failed to execute patient prediction: {str(e)}")
+
+# TAB 5: CONFIG GUIDE (mirrors config.py; update when adding new flags)
+with tab5:
+    st.markdown("### Config Guide")
+    st.markdown(
+        "All runtime paths and knobs live in **`config.py`** at the repository root. "
+        "Below is a concise map of the main variables, including **logging and quality-gate** options."
+    )
+    try:
+        if BASE_DIR not in sys.path:
+            sys.path.append(BASE_DIR)
+        import config as cfg
+
+        st.markdown("#### Paths (data & artifacts)")
+        st.markdown(
+            f"""
+| Variable | Role |
+|----------|------|
+| `PATH_RAW` | Duke-style DICOM tree: `{cfg.PATH_RAW}` |
+| `PATH_ANNOTATION_BOXES` | ROI Excel |
+| `PATH_MICRO_CUBES` | Output/input `*_lattice.pt` tensors |
+| `PATH_CLINICAL` | Clinical spreadsheet (`Mol Subtype`, etc.) |
+| `PATH_MODEL_DIR` / `PATH_MODEL_WEIGHTS` | Saved 3D-ResNet weights |
+| `LATTICE_FILE_SUFFIX` | File suffix for cubes (default `{cfg.LATTICE_FILE_SUFFIX}`) |
+"""
+        )
+
+        st.markdown("#### Extraction logs & QA audits")
+        st.markdown(
+            f"""
+| Variable | Role |
+|----------|------|
+| `PATH_LOGS` | Append-only extraction log (`run_logs.ExtractionLogWriter` in `main.py`): `{cfg.PATH_LOGS}` |
+| `PATH_EXTRACTION_AUDIT_DIR` | Per-run **JSONL** audits (`OK` / `WARNING` / `REVIEW`): `{cfg.PATH_EXTRACTION_AUDIT_DIR}` |
+| `AUDIT_WRITE_JSONL` | **`{cfg.AUDIT_WRITE_JSONL}`** — if `False`, `main.py` skips writing JSONL records. |
+| `SHOW_VISUALIZER_AFTER_SAVE` | Pop-up matplotlib after each save (**`{cfg.SHOW_VISUALIZER_AFTER_SAVE}`**). |
+"""
+        )
+
+        st.markdown("#### Micro-cube & registration")
+        st.markdown(
+            f"""
+| Variable | Role |
+|----------|------|
+| `MICRO_CUBE_SIZE` | Fixed edge length (**{cfg.MICRO_CUBE_SIZE}**). |
+| `ROI_PADDING_FRACTION` | Peritumoral halo fraction. |
+| `PRE_POST_INTERPOLATE_MODE` | Interpolation mode (e.g. trilinear). |
+| `REGISTRATION_MIN_CORRELATION` | Post-FFT Pearson r gate for **WARNING** (**{cfg.REGISTRATION_MIN_CORRELATION}**). |
+| `HYBRID_STRUCTURAL_RATIO` | Channel 1 mix max/avg (**{cfg.HYBRID_STRUCTURAL_RATIO}**). |
+| `VAR_DENOISING_SIGMA` | Gaussian denoising before C2 variance (**{cfg.VAR_DENOISING_SIGMA}**). |
+| `C2_LOCAL_VAR_KERNEL` | **Odd** sliding window for local variance on C2 (**{cfg.C2_LOCAL_VAR_KERNEL}**). |
+"""
+        )
+
+        st.markdown("#### Training: audit filter & run logs")
+        st.markdown(
+            f"""
+| Variable | Role |
+|----------|------|
+| `TRAIN_FILTER_BY_AUDIT` | **`{cfg.TRAIN_FILTER_BY_AUDIT}`** — if `True`, `train.py` keeps only patients whose **latest** JSONL row has status in `TRAIN_ALLOWED_AUDIT_STATUSES`. Requires audit files under `PATH_EXTRACTION_AUDIT_DIR`. |
+| `TRAIN_ALLOWED_AUDIT_STATUSES` | Tuple of allowed statuses, e.g. `{cfg.TRAIN_ALLOWED_AUDIT_STATUSES}`. |
+| `PATH_TRAINING_LOG_DIR` | Per-run training `.txt` via ``run_logs.TrainingRunLogWriter`` (header, epoch lines, footer): `{cfg.PATH_TRAINING_LOG_DIR}` |
+| `TRAIN_LOG_WRITE_TXT` | **`{cfg.TRAIN_LOG_WRITE_TXT}`** — if `False`, no training run `.txt` is written. |
+| `TRAIN_STRATIFIED_SPLIT` | **`{cfg.TRAIN_STRATIFIED_SPLIT}`** — patient-level train/val with ~balanced binary labels per split. |
+| `TRAIN_USE_WEIGHTED_SAMPLER` | **`{cfg.TRAIN_USE_WEIGHTED_SAMPLER}`** — `WeightedRandomSampler` on train (mutually cautious with `TRAIN_USE_CLASS_POS_WEIGHT`). |
+| `TRAIN_USE_CLASS_POS_WEIGHT` | **`{cfg.TRAIN_USE_CLASS_POS_WEIGHT}`** — BCE `pos_weight = n_neg/n_pos` inside Focal loss. |
+"""
+        )
+
+        st.markdown("#### Training hyperparameters & early stopping")
+        st.markdown(
+            f"""
+| Variable | Role |
+|----------|------|
+| `BATCH_SIZE` | **{cfg.BATCH_SIZE}** |
+| `LEARNING_RATE` / `ONECYCLE_MAX_LR` | AdamW base LR / OneCycle peak |
+| `EPOCHS` | Max epochs (**{cfg.EPOCHS}**); early stopping usually cuts sooner. |
+| `TRAIN_VAL_SPLIT_FRACTION` | Train fraction (**{cfg.TRAIN_VAL_SPLIT_FRACTION}**). |
+| `RANDOM_SEED` | **{cfg.RANDOM_SEED}** |
+| `EARLY_STOPPING_*` | Patience / min delta / first epoch to count patience |
+| `FOCAL_LOSS_ALPHA` / `FOCAL_LOSS_GAMMA` | Focal loss tuning |
+| `ADAMW_WEIGHT_DECAY` | Weight decay |
+| `NORMALIZE_EPS` | Epsilon for cube z-score normalization |
+"""
+        )
+
+        st.markdown("#### Labels (clinical)")
+        st.markdown(
+            f"""
+| Variable | Role |
+|----------|------|
+| `CLINICAL_EXCEL_HEADER_ROW` | **{cfg.CLINICAL_EXCEL_HEADER_ROW}** (pandas `header=`). |
+| `COL_PATIENT_ID` / `COL_MOL_SUBTYPE` | Column names |
+| `MOL_SUBTYPE_POSITIVE_THRESHOLD` | Label 1 if subtype **>** this (**{cfg.MOL_SUBTYPE_POSITIVE_THRESHOLD}**). |
+"""
+        )
+
+        st.markdown("#### Model width & inference")
+        st.markdown(
+            f"""
+| Variable | Role |
+|----------|------|
+| `INPUT_CHANNELS`, `STEM_CHANNELS`, `RES_BLOCK*`, `POOL_*` | 3D-ResNet topology |
+| `CLASSIFIER_*` | Head + dropout; `CLASSIFIER_LINEAR_IN` must match pool geometry + `MICRO_CUBE_SIZE`. |
+| `META_FEATURE_DIM`, `META_MLP_OUT`, `META_NORM_SHIFT_*` | Metadata MLP input (see `helper.normalize_metadata`). |
+| `MALIGNANCY_PROB_THRESHOLD` | Sigmoid threshold for high-risk (**{cfg.MALIGNANCY_PROB_THRESHOLD}**). |
+| `INFERENCE_DEVICE` | Device string for `predict.py` (**`{cfg.INFERENCE_DEVICE}`**). |
+"""
+        )
+
+        st.caption(
+            "Tip: after changing paths or flags, restart the Streamlit app so imports pick up the new `config.py`."
+        )
+    except Exception as e:
+        st.warning(f"Could not load config for this guide: {e}")
