@@ -75,14 +75,14 @@ EPOCHS = 100
 TRAIN_VAL_SPLIT_FRACTION = 0.8
 RANDOM_SEED = 42
 EARLY_STOPPING_PATIENCE = 15
-EARLY_STOPPING_MIN_DELTA = 1e-3
+EARLY_STOPPING_MIN_DELTA = 5e-4
 EARLY_STOPPING_START_EPOCH = 10
 FOCAL_LOSS_ALPHA = 0.75
 FOCAL_LOSS_GAMMA = 2.0
 # Class imbalance (training only; same micro-cubes and labels). Prefer one strategy at a time.
-TRAIN_STRATIFIED_SPLIT = False  # patient-level train/val preserving ~label ratio per side
+TRAIN_STRATIFIED_SPLIT = True  # patient-level train/val preserving ~label ratio per side
 TRAIN_USE_WEIGHTED_SAMPLER = False  # oversample minority class each epoch (DataLoader sampler)
-TRAIN_USE_CLASS_POS_WEIGHT = False  # BCE pos_weight = n_neg / n_pos inside FocalLoss
+TRAIN_USE_CLASS_POS_WEIGHT = True  # BCE pos_weight = n_neg / n_pos inside FocalLoss
 ADAMW_WEIGHT_DECAY = 1e-2
 ONECYCLE_MAX_LR = 5e-4
 NORMALIZE_EPS = 1e-8

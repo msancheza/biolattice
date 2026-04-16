@@ -1,8 +1,10 @@
 """
-Structured text logs for Bio-Lattice: extraction (main pipeline) and per-run training.
+Structured text logs for Bio-Lattice.
 
-Use ``ExtractionLogWriter`` in ``main.py`` (append-only extraction_log.txt) and
-``TrainingRunLogWriter`` in ``train.py`` (one file per run under training_logs/).
+``RunLogWriter`` is the unified logger used for:
+- extraction/events append logs (main pipeline),
+- per-run training logs,
+- per-run metrics logs.
 """
 from __future__ import annotations
 
@@ -21,43 +23,39 @@ def _ensure_parent_dir(path: str) -> None:
         os.makedirs(parent, exist_ok=True)
 
 
-class ExtractionLogWriter:
-    """Append-only log for DICOM extraction / registration events (``PATH_LOGS``)."""
-
-    def __init__(self, log_path: str | None = None):
-        self.path = log_path or config.PATH_LOGS
-
-    def event(self, message: str) -> None:
-        _ensure_parent_dir(self.path)
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(f"{message}\n")
-            f.flush()
+def _write_text(path: str, content: str, mode: str = "a") -> None:
+    _ensure_parent_dir(path)
+    with open(path, mode, encoding="utf-8") as f:
+        if content and not content.endswith("\n"):
+            f.write(content + "\n")
+        else:
+            f.write(content)
+        f.flush()
 
 
-class TrainingRunLogWriter:
-    """One training run file: header, epoch lines, notes, footer."""
+class RunLogWriter:
+    """Per-run text logger for training or metrics logs."""
 
     def __init__(self, path: str):
         self.path = path
 
     @classmethod
-    def new_run_path(cls) -> str:
+    def new_run_path(cls, kind: str = "training") -> str:
         os.makedirs(config.PATH_TRAINING_LOG_DIR, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-        return os.path.join(config.PATH_TRAINING_LOG_DIR, f"training_run_{ts}.txt")
+        prefix = "metrics_run" if kind == "metrics" else "training_run"
+        return os.path.join(config.PATH_TRAINING_LOG_DIR, f"{prefix}_{ts}.txt")
 
     @classmethod
-    def create_new(cls) -> TrainingRunLogWriter:
-        return cls(cls.new_run_path())
+    def create_new(cls, kind: str = "training") -> "RunLogWriter":
+        return cls(cls.new_run_path(kind=kind))
 
     def write(self, content: str, mode: str = "a") -> None:
-        _ensure_parent_dir(self.path)
-        with open(self.path, mode, encoding="utf-8") as f:
-            if content and not content.endswith("\n"):
-                f.write(content + "\n")
-            else:
-                f.write(content)
-            f.flush()
+        _write_text(self.path, content, mode=mode)
+
+    def event(self, message: str) -> None:
+        """Append one line (useful for extraction/event logs)."""
+        _write_text(self.path, message, mode="a")
 
     @staticmethod
     def _host_training_context_lines(device_str: str) -> list[str]:
@@ -80,7 +78,7 @@ class TrainingRunLogWriter:
                 lines.append("cuda_device_0: (unavailable)")
         return lines
 
-    def write_run_header(
+    def write_training_header(
         self,
         *,
         start_iso: str,
@@ -189,7 +187,7 @@ class TrainingRunLogWriter:
         text = message if message.startswith("note:") else f"note: {message}"
         self.write(text, mode="a")
 
-    def write_run_footer(
+    def write_training_footer(
         self,
         *,
         end_iso: str,
@@ -213,3 +211,42 @@ class TrainingRunLogWriter:
         if extra:
             block.append(f"note: {extra}")
         self.write("\n".join(block), mode="a")
+
+    def write_metrics(
+        self,
+        *,
+        total: int,
+        accuracy: float,
+        auc: float,
+        sensitivity: float,
+        specificity: float,
+        confusion: dict,
+        configured_threshold: float,
+        best_threshold_youden: dict,
+    ) -> None:
+        lines = [
+            "=== Bio-Lattice metrics run ===",
+            f"evaluated_at: {datetime.now().isoformat(timespec='seconds')}",
+            f"total_validation_patients: {total}",
+            "",
+            "--- Metrics at configured threshold ---",
+            f"configured_threshold: {configured_threshold:.4f}",
+            f"accuracy: {accuracy:.4f}",
+            f"roc_auc: {auc:.4f}",
+            f"sensitivity: {sensitivity:.4f}",
+            f"specificity: {specificity:.4f}",
+            "",
+            "--- Confusion matrix (configured threshold) ---",
+            f"tn: {confusion.get('tn', 0)}",
+            f"fp: {confusion.get('fp', 0)}",
+            f"fn: {confusion.get('fn', 0)}",
+            f"tp: {confusion.get('tp', 0)}",
+            "",
+            "--- Best threshold by Youden J ---",
+            f"threshold: {best_threshold_youden.get('threshold', 0.0):.4f}",
+            f"youden_j: {best_threshold_youden.get('youden_j', 0.0):.4f}",
+            f"accuracy: {best_threshold_youden.get('accuracy', 0.0):.4f}",
+            f"sensitivity: {best_threshold_youden.get('sensitivity', 0.0):.4f}",
+            f"specificity: {best_threshold_youden.get('specificity', 0.0):.4f}",
+        ]
+        self.write("\n".join(lines), mode="w")

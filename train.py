@@ -12,8 +12,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
 
 import config
-import helper
-from run_logs import TrainingRunLogWriter
+from core import helper
+from core.run_logs import RunLogWriter
 
 
 # --- Model architecture ---
@@ -239,7 +239,7 @@ def train_model():
     )
 
     # 4. Training Cycle
-    run_log = TrainingRunLogWriter.create_new() if getattr(config, "TRAIN_LOG_WRITE_TXT", True) else None
+    run_log = RunLogWriter.create_new(kind="training") if getattr(config, "TRAIN_LOG_WRITE_TXT", True) else None
     trainer = BioLatticeTrainer(model, train_loader, val_loader, criterion, optimizer, scheduler, device, run_log)
 
     t_loop_mono = None
@@ -249,7 +249,7 @@ def train_model():
 
     if run_log:
         start_iso = datetime.now().isoformat(timespec="seconds")
-        run_log.write_run_header(
+        run_log.write_training_header(
             start_iso=start_iso,
             device_str=str(device),
             n_dataset_train=len(dataset_train),
@@ -320,7 +320,7 @@ def train_model():
             end_iso = datetime.now().isoformat(timespec="seconds")
             duration = time.monotonic() - t_loop_mono
             status = "failed" if loop_error else ("early_stop" if early_stopped else "completed")
-            trainer.run_log.write_run_footer(
+            trainer.run_log.write_training_footer(
                 end_iso=end_iso,
                 duration_sec=duration,
                 epochs_completed=epochs_completed,

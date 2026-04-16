@@ -6,8 +6,9 @@ from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, confusi
 from torch.utils.data import DataLoader
 
 import config
-import helper
-from helper import BioLatticeDataset, build_patient_level_split
+from core import helper
+from core.helper import BioLatticeDataset, build_patient_level_split
+from core.run_logs import RunLogWriter
 from train import BioLattice3DResNet
 
 # Probability threshold on sigmoid output (0–1); mirrors `MALIGNANCY_PROB_THRESHOLD` in config.
@@ -181,7 +182,7 @@ def evaluate_dataset():
     tn, fp, fn, tp = confusion_matrix(all_labels, all_preds, labels=[0, 1]).ravel()
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0.0
     
-    return {
+    result = {
         "accuracy": acc,
         "auc": auc,
         "sensitivity": sensitivity,
@@ -192,6 +193,25 @@ def evaluate_dataset():
         "configured_threshold": INFERENCE_PROB_THRESHOLD,
         "best_threshold_youden": best,
     }
+
+    # Persist a per-run metrics snapshot in dashboard/training_logs/.
+    try:
+        metrics_log = RunLogWriter.create_new(kind="metrics")
+        metrics_log.write_metrics(
+            total=result["total"],
+            accuracy=result["accuracy"],
+            auc=result["auc"],
+            sensitivity=result["sensitivity"],
+            specificity=result["specificity"],
+            confusion=result["confusion"],
+            configured_threshold=result["configured_threshold"],
+            best_threshold_youden=result["best_threshold_youden"],
+        )
+        print(f"Metrics log saved to: {metrics_log.path}")
+    except Exception as exc:
+        print(f"Warning: could not write metrics log: {exc}")
+
+    return result
 
 if __name__ == "__main__":
     print("Starting Bio-Lattice 4D Virtual Biopsy Mode...")

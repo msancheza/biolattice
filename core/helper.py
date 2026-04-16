@@ -87,11 +87,13 @@ def load_allowed_patient_ids_from_latest_audit():
         with open(latest_path, "r") as f:
             for line in f:
                 line = line.strip()
-                if not line: continue
+                if not line:
+                    continue
                 rec = json.loads(line)
                 pid = rec.get("patient_id")
-                if not pid: continue
-                
+                if not pid:
+                    continue
+
                 status = str(rec.get("status", "")).upper()
                 if status in allowed_statuses:
                     allowed_ids.append(pid)
@@ -121,14 +123,13 @@ class BioLatticeDataset(Dataset):
         ]
 
         self.data_info = self.data_info[self.data_info[config.COL_MOL_SUBTYPE].notna()].copy()
-        # Drop duplicates by Patient ID to ensure complete structural isolation in split
         self.data_info = self.data_info.drop_duplicates(subset=[config.COL_PATIENT_ID])
 
         if allowed_patient_ids is not None:
             self.data_info = self.data_info[
                 self.data_info[config.COL_PATIENT_ID].isin(allowed_patient_ids)
             ].copy()
-        
+
     def __len__(self):
         return len(self.data_info)
 
@@ -143,15 +144,12 @@ class BioLatticeDataset(Dataset):
             weights_only=True
         )
         cube = data_obj['tensor']
-        
-        # --- EXTRACT METADATA ---
+
         meta = data_obj.get('meta', {})
         spacing = meta.get('voxel_spacing', [1.0, 1.0])
         thickness = meta.get('slice_thickness', 1.0)
-        # Use centralized logic from this same module
         meta_tensor = normalize_metadata(spacing, thickness)
 
-        # --- DATA AUGMENTATION ---
         if self.augment:
             if random.random() > 0.5:
                 cube = torch.flip(cube, dims=[2])
@@ -193,7 +191,6 @@ def build_patient_level_split(dataset, train_fraction, seed):
 
 def build_stratified_train_val_indices(dataset, train_fraction: float, seed: int):
     """Patient-level train/val index lists with approximate label balance."""
-    # Note: dataset here is typically BioLatticeDataset or similar with .data_info
     labels = [binary_mol_subtype_label(dataset.data_info.iloc[i]) for i in range(len(dataset))]
     rng = random.Random(seed)
     pos_idx = [i for i, y in enumerate(labels) if y >= 0.5]
@@ -203,7 +200,8 @@ def build_stratified_train_val_indices(dataset, train_fraction: float, seed: int
 
     def split_stratum(idxs):
         n = len(idxs)
-        if n <= 1: return (idxs, []) if train_fraction >= 0.5 else ([], idxs)
+        if n <= 1:
+            return (idxs, []) if train_fraction >= 0.5 else ([], idxs)
         n_tr = max(1, min(int(round(train_fraction * n)), n - 1))
         return idxs[:n_tr], idxs[n_tr:]
 
@@ -218,6 +216,5 @@ def build_stratified_train_val_indices(dataset, train_fraction: float, seed: int
 
 def labels_for_subset(subset: Subset) -> list[float]:
     """Extracts binary labels for a Subset of a BioLatticeDataset."""
-    # This assumes the base dataset has a .data_info attribute (BioLatticeDataset)
     base = subset.dataset
     return [binary_mol_subtype_label(base.data_info.iloc[i]) for i in subset.indices]
