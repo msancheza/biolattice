@@ -17,15 +17,19 @@ import torch
 import torch.nn.functional as F
 
 import config
+import helper
+from run_logs import ExtractionLogWriter
 from visualizer import visualize_micro_cube
 
 if not os.path.exists(config.PATH_MICRO_CUBES):
     os.makedirs(config.PATH_MICRO_CUBES)
 
+_extraction_logger = ExtractionLogWriter()
+
+
 def log_event(message):
-    """ Appends a message to the extraction_log.txt file. """
-    with open(config.PATH_LOGS, "a") as f:
-        f.write(f"{message}\n")
+    """Appends a line to ``PATH_LOGS`` (extraction / registration audit trail)."""
+    _extraction_logger.event(message)
 
 
 def build_extraction_audit_path():
@@ -331,9 +335,9 @@ def process_dataset():
         
         # Heuristic matching
         for s in series_found:
-            if config.series_is_pre_contrast(s['desc']):
+            if helper.series_is_pre_contrast(s['desc']):
                 path_pre = s['path']
-            if config.series_is_post_contrast(s['desc']):
+            if helper.series_is_post_contrast(s['desc']):
                 path_post = s['path']
         
         # Fallback: if names are ambiguous (all 'ax dyn'), use order

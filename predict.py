@@ -6,7 +6,9 @@ from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, confusi
 from torch.utils.data import DataLoader
 
 import config
-from train import BioLattice3DResNet, BioLatticeDataset, build_patient_level_split
+import helper
+from helper import BioLatticeDataset, build_patient_level_split
+from train import BioLattice3DResNet
 
 # Probability threshold on sigmoid output (0–1); mirrors `MALIGNANCY_PROB_THRESHOLD` in config.
 INFERENCE_PROB_THRESHOLD = config.MALIGNANCY_PROB_THRESHOLD
@@ -40,7 +42,7 @@ def predict_patient(p_id):
     meta = data_obj.get('meta', {})
     spacing = meta.get('voxel_spacing', [1.0, 1.0])
     thickness = meta.get('slice_thickness', 1.0)
-    meta_tensor = config.normalize_metadata(spacing, thickness).unsqueeze(0).to(device)
+    meta_tensor = helper.normalize_metadata(spacing, thickness).unsqueeze(0).to(device)
 
     std = torch.std(cube)
     cube = (

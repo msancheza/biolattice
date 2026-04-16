@@ -6,7 +6,7 @@ __pycache__/
 .DS_Store
 
 # Large Machine Learning Files and DICOM Images
-datasets/micro_cubos/
+datasets/micro_cubes/
 datasets/raw_data/
 datasets/model/
 
@@ -16,3 +16,4 @@ docs/
 scripts/
 v2/
 .env
+dashboard/training_logs/
