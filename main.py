@@ -17,14 +17,14 @@ import torch
 import torch.nn.functional as F
 
 import config
-import helper
-from run_logs import ExtractionLogWriter
+from core import helper
+from core.run_logs import RunLogWriter
 from visualizer import visualize_micro_cube
 
 if not os.path.exists(config.PATH_MICRO_CUBES):
     os.makedirs(config.PATH_MICRO_CUBES)
 
-_extraction_logger = ExtractionLogWriter()
+_extraction_logger = RunLogWriter(config.PATH_LOGS)
 
 
 def log_event(message):
