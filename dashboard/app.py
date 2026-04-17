@@ -2,49 +2,23 @@ import streamlit as st
 import subprocess
 import os
 import sys
+import numpy as np
 
 # Page Configuration
 st.set_page_config(page_title="Bio-Lattice 4D", layout="wide", page_icon="🧬")
 
-# Custom CSS for minimalist, smaller typography (Dark Mode compatible)
+# Custom CSS for minimalist typography
 st.markdown("""
     <style>
-    /* Base font settings */
     html, body, [class*="st-"] {
         font-family: 'Inter', 'Helvetica Neue', sans-serif;
         font-size: 13px !important;
         font-weight: 300;
     }
-    
-    /* Headers */
     h1 { font-size: 22px !important; font-weight: 500 !important; letter-spacing: -0.5px; padding-bottom: 5px;}
     h2 { font-size: 16px !important; font-weight: 500 !important; }
     h3 { font-size: 14px !important; font-weight: 400 !important; }
-    
-    /* Buttons */
-    .stButton>button { 
-        border-radius: 4px; 
-        font-weight: 400; 
-        font-size: 13px; 
-    }
-    
-    /* Minimalist tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 24px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
-        background-color: transparent;
-        border-radius: 0px;
-        font-size: 14px;
-        font-weight: 400;
-        opacity: 0.8;
-    }
-    .stTabs [aria-selected="true"] {
-        border-bottom-color: var(--primary-color) !important;
-        opacity: 1;
-    }
+    .stButton>button { border-radius: 4px; font-weight: 400; font-size: 13px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -52,326 +26,140 @@ st.title("Bio-Lattice 4D Dashboard")
 st.markdown("Minimalist orchestration engine for the 3D-ResNet tumor classification pipeline.")
 st.divider()
 
-# Project Root Directory
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 def run_script(script_name):
-    """Executes a target python script from the root project directory."""
     try:
-        result = subprocess.run(
-            ["python", script_name], 
-            cwd=BASE_DIR, 
-            capture_output=True, 
-            text=True
-        )
+        result = subprocess.run(["python", script_name], cwd=BASE_DIR, capture_output=True, text=True)
         return result.stdout, result.stderr
     except Exception as e:
         return "", str(e)
 
-# --- STEP-BY-STEP TABS ---
 tabs = st.tabs([
     "ℹ️ About Project",
-    "1. Data Extraction •",
-    "2. Model Training •",
-    "3. Validation Metrics •",
+    "1. Data Extraction",
+    "2. Model Training",
+    "3. Validation Metrics",
     "4. Patient Inference",
-    "5. Config Guide",
+    "5. Expert Visualizer 🔬",
+    "6. Config Guide",
 ])
-tab_about, tab1, tab2, tab3, tab4, tab5 = tabs
+tab_about, tab1, tab2, tab3, tab4, tab5, tab6 = tabs
 
-# TAB 0: ABOUT / README
 with tab_about:
     st.markdown("## 🧬 Bio-Lattice 4D: Project Overview")
     st.markdown("""
-    **Bio-Lattice 4D** (*microCube*) converts raw breast MRI volumes (DICOM) into highly compact **32×32×32 4D micro-cubes**. 
-    These volumetric tensors capture the tumor's foundational structure, **local heterogeneity** (pooled **E[X²]−E[X]²** per micro-cell—texture-like signal without explicit GLCM/LBP), and pre/post contrast kinetics across **3 independent spatial channels**.
-    
-    The orchestrator trains a custom **3D-ResNet** on these tensors using a **binary target derived in code** from the Duke file **`Clinical_and_Other_Features.xlsx`**: column **`Mol Subtype`** — class **1** if **`Mol Subtype > 0`**, class **0** if **`≤ 0`**; rows with missing **`Mol Subtype`** are **dropped** (they do not train as benign). This is a **spreadsheet-level proxy** related to molecular subtype, **not** a direct biopsy report field in this codebase. Metrics reflect that rule; for research claims, align wording with this definition or replace labels in `BioLatticeDataset`.
+    **Bio-Lattice 4D** (*microCube*) converts raw breast MRI volumes (DICOM) into highly compact **64×64×64 4D micro-cubes**. 
+    These volumetric tensors capture the tumor's foundational structure, **local heterogeneity**, and pre/post contrast kinetics across **3 independent spatial channels**.
     
     ### ⚙️ Pipeline Lifecycle:
-    1. **Data Extraction:** Duke-oriented PRE/POST folder selection (`SeriesDescription` substring rules; same ROI box on both phases; optional trilinear **resize of pre to post** if shapes differ—**not** rigid registration). Saves `[3,32,32,32]` `.pt` tensors. Details: README section **What `main.py` actually does**.
-    2. **Model Training:** Dynamically trains the `BioLattice3DResNet` residual classifier efficiently leveraging Apple Silicon (MPS) hardware acceleration, Z-Score distribution modeling, and aggressive False Negative penalization thresholds.
-    3. **Clinical Validation:** Evaluates inference strictness against an isolated 20% dataset to retrieve global Accuracy, ROC AUC, Sensitivity, and Specificity metrics.
-    4. **Inference:** Patient-level malignancy risk from the micro-cube + trained head (not voxel-level segmentation).
+    1. **Data Extraction:** Duke-oriented series selection, isotropic resampling, and ROI engineering. Saves `[3, 64, 64, 64]` tensors with audit trails.
+    2. **Model Training:** Trains a multi-modal **3D-ResNet** using image embeddings + physical metadata (spacing/thickness).
+    3. **Clinical Validation:** Evaluates performance against a strictly separated 20% dataset (AUC, Youden J).
+    4. **Inference:** Diagnostic risk report for individual patients.
+    5. **Expert Visualization:** Explainable AI (Grad-CAM) + multi-channel decomposition.
     
     > **⚠️ Medical Disclaimer:**
-    > This orchestrator and its underlying diagnostic algorithms are strictly a **Research Prototype**. It is not a certified medical device and must never be utilized for final clinical decisions or standalone patient diagnosis.
+    > This orchestrator and its underlying diagnostic algorithms are strictly a **Research Prototype**. It is not a certified medical device and must never be utilized for final clinical decisions.
     """)
 
-# TAB 1: DATA EXTRACTION
 with tab1:
     st.markdown("### Prepare 4D Micro-Cubes")
-    st.markdown("Builds micro-cubes: Duke-style PRE/POST series pick, same ROI on both phases, optional **pre→post trilinear resize** if cropped shapes differ, then three pooled channels (structure, variance, wash-in). **No** explicit rigid registration or `RescaleSlope` in this step.")
-    
-    st.write("") # Spacer
     if st.button("Run Data Extraction (main.py)", use_container_width=True):
-        with st.spinner("Extracting features and generating tensors..."):
+        with st.spinner("Extracting features..."):
             stdout, stderr = run_script("main.py")
-        st.success("Data Extraction completed successfully.")
-        with st.expander("Show Console Logs"):
-            st.code(stdout + "\n" + stderr)
+            st.success("Completed.")
+            with st.expander("Logs"): st.code(stdout + stderr)
 
-# TAB 2: MODEL TRAINING
 with tab2:
     st.markdown("### Train 3D-ResNet Model")
-    st.markdown("Executes the deep learning neural network cycle. Supports Apple Silicon MPS & NVIDIA CUDA.")
-    
-    try:
-        if BASE_DIR not in sys.path:
-            sys.path.append(BASE_DIR)
-        import config as _cfg
-        st.info(
-            f"⚙️ Configured for **{_cfg.EPOCHS} Epochs** (Batch Size: {_cfg.BATCH_SIZE})."
-        )
-    except Exception:
-        pass
-        
-    st.write("") # Spacer
-    if st.button("Start Diagnostics Training (train.py)", use_container_width=True):
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        log_expander = st.empty()
-        
-        with st.spinner("Initializing Neural Engine..."):
-            try:
-                import re
-                
-                # Exect python with -u (unbuffered) to force logs in real time
-                process = subprocess.Popen(
-                    ["python", "-u", "train.py"], 
-                    cwd=BASE_DIR, 
-                    stdout=subprocess.PIPE, 
-                    stderr=subprocess.STDOUT, 
-                    text=True,
-                    bufsize=1
-                )
-                
-                full_log = ""
-                for line in process.stdout:
-                    full_log += line
-                    
-                    # Lógica de barra de progreso para "Epoch [X/Y]"
-                    match = re.search(r"Epoch \[(\d+)/(\d+)\]", line)
-                    if match:
-                        curr_epoch = int(match.group(1))
-                        total_ep = int(match.group(2))
-                        progress_bar.progress(curr_epoch / total_ep)
-                        status_text.markdown(f"**Training Live:** Epoch `{curr_epoch}` of `{total_ep}`")
-                
-                process.wait()
-                
-                if process.returncode == 0:
-                    status_text.markdown("✅ **Training complete.**")
-                    st.success("Model correctly trained and weights updated locally.")
-                else:
-                    st.error("Training encountered an error or was aborted.")
-                    
-                with st.expander("Show Full Training Logs", expanded=False):
-                    st.code(full_log)
-                    
-            except Exception as e:
-                st.error(f"Execution Error: {str(e)}")
-            finally:
-                # Prevenir procesos huérfanos forzando un SIGKILL si el usuario detiene el dashboard
-                if 'process' in locals() and process.poll() is None:
-                    try:
-                        process.kill()
-                        process.wait(timeout=2)
-                    except Exception:
-                        pass
+    if st.button("Start Training (train.py)", use_container_width=True):
+        with st.spinner("Training..."):
+            stdout, stderr = run_script("train.py")
+            st.success("Trained.")
+            with st.expander("Logs"): st.code(stdout + stderr)
 
-# TAB 3: VALIDATION
 with tab3:
     st.markdown("### Clinical Validation")
-    st.markdown("Calculates absolute global precision across the strictly separated 20% validation dataset.")
-    
-    st.write("") # Spacer
-    if st.button("Evaluate Global Metrics", type="primary", use_container_width=True):
-        with st.spinner("Performing widespread inference on unseen medical data..."):
+    if st.button("Evaluate Global Metrics", use_container_width=True):
+        with st.spinner("Evaluating..."):
             try:
-                if BASE_DIR not in sys.path:
-                    sys.path.append(BASE_DIR)
-                
-                # Import dynamically to ensure the latest weights are evaluated 
-                from predict import evaluate_dataset
-                
-                res = evaluate_dataset()
-                
-                if "error" in res:
-                    st.error(res["error"])
-                else:
-                    st.markdown(f"**Results based on {res['total']} isolated validation patients:**")
-                    
-                    # Native minimal metrics
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Accuracy", f"{res['accuracy']*100:.1f}%")
-                    c2.metric("ROC AUC", f"{res['auc']:.3f}")
-                    c3.metric("Sensitivity", f"{res['sensitivity']*100:.1f}%")
-                    c4.metric("Specificity", f"{res['specificity']*100:.1f}%")
-                    
-                    st.divider()
-                    st.markdown("**Confusion Matrix**")
-                    col_tn, col_fp, col_fn, col_tp = st.columns(4)
-                    col_tn.metric("True Negatives", res["confusion"]["tn"])
-                    col_fp.metric("False Positives", res["confusion"]["fp"])
-                    col_fn.metric("False Negatives", res["confusion"]["fn"])
-                    col_tp.metric("True Positives", res["confusion"]["tp"])
-                    
+                if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
+                import predict, importlib
+                importlib.reload(predict)
+                res = predict.evaluate_dataset()
+                st.json(res)
             except Exception as e:
-                st.error(f"Failed to evaluate dataset: {str(e)}")
+                st.error(str(e))
 
-# TAB 4: INDIVIDUAL PATIENT INFERENCE
 with tab4:
     st.markdown("### Patient Inference")
-    st.markdown("Run the Bio-Lattice Virtual Biopsy on an individual patient's 4D tensor.")
-    
-    st.write("") # Spacer
-    patient_id = st.text_input("Enter Patient ID:", placeholder="Breast_MRI_002")
-    
-    if st.button("Run Prediction (predict.py)", type="primary", use_container_width=True):
-        if not patient_id.strip():
-            st.warning("Please enter a valid Patient ID first.")
-        else:
-            with st.spinner(f"Analyzing 4D Biopsy for {patient_id}..."):
+    p_id_inf = st.text_input("Patient ID for Risk Report:", placeholder="Breast_MRI_002", key="inf_pid")
+    if st.button("Generate Risk Report", type="primary", use_container_width=True):
+        try:
+            if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
+            import predict, importlib
+            importlib.reload(predict)
+            res = predict.predict_patient(p_id_inf.strip())
+            if "error" in res: st.error(res["error"])
+            else:
+                st.markdown(f"**Results for Patient: `{p_id_inf}`**")
+                cA, cB = st.columns(2)
+                if res["high_risk"]: cA.error("🚨 POSITIVE (HIGH MALIGNANCY RISK)")
+                else: cA.success("✅ NEGATIVE (LOWER RISK PHENOTYPE)")
+                cB.metric("Risk Index", f"{res['risk_percent']:.2f}%")
+                
+                # --- RESTORE PREVIOUS VIZ STYLE ---
                 try:
-                    if BASE_DIR not in sys.path:
-                        sys.path.append(BASE_DIR)
-                        
-                    from predict import predict_patient
-                    res = predict_patient(patient_id.strip())
+                    import visualizer
+                    importlib.reload(visualizer)
+                    # We can reuse compute_gradcam from visualizer
+                    result = visualizer.compute_gradcam(p_id_inf.strip())
+                    if result:
+                        cam, cube = result
+                        z = np.unravel_index(np.argmax(cam), cam.shape)[0]
+                        import matplotlib.pyplot as plt
+                        fig, ax = plt.subplots(1, 2, figsize=(8, 4), facecolor="black")
+                        ax[0].imshow(cube[0, z], cmap='gray')
+                        ax[0].set_title(f"ANATOMY (Z={z})", color="white", fontsize=8)
+                        ax[0].axis('off')
+                        ax[1].imshow(cube[0, z], cmap='gray')
+                        ax[1].imshow(cam[z], cmap='jet', alpha=0.65)
+                        ax[1].set_title("AI ATTENTION FOCUS", color="#00f2ff", fontsize=8)
+                        ax[1].axis('off')
+                        st.pyplot(fig)
+                except Exception as viz_err:
+                    st.warning(f"Note: Visual explanation skipped ({viz_err})")
                     
-                    if not res:
-                        st.error("Unknown error executing prediction script.")
-                    elif "error" in res:
-                        st.error(res["error"])
-                    else:
-                        st.markdown(f"**Results for Patient: `{patient_id}`**")
-                        
-                        colA, colB = st.columns(2)
-                        
-                        # Big visual indicator
-                        if res["high_risk"]:
-                            colA.error("🚨 POSITIVE (HIGH MALIGNANCY RISK)")
-                        else:
-                            colA.success("✅ NEGATIVE (LIKELY BENIGN TISSUE)")
-                            
-                        # Metric gauge
-                        colB.metric("Risk Index", f"{res['risk_percent']:.2f}%")
-                        st.caption(f"Configured Positive Threshold: ≥ {res['threshold_percent']:.0f}%")
-                except Exception as e:
-                    st.error(f"Failed to execute patient prediction: {str(e)}")
+                st.caption(f"Configured Positive Threshold: ≥ {res['threshold_percent']:.0f}%")
+        except Exception as e:
+            st.error(str(e))
 
-# TAB 5: CONFIG GUIDE (mirrors config.py; update when adding new flags)
 with tab5:
+    st.markdown("### 🔬 Expert Visualizer (4-Channel Analysis)")
+    p_id_viz = st.text_input("Patient ID for Detailed Analysis:", placeholder="Breast_MRI_400", key="viz_pid")
+    if st.button("Launch Expert Analysis", type="primary", use_container_width=True):
+        try:
+            if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
+            import visualizer, importlib
+            importlib.reload(visualizer)
+            fig = visualizer.visualize_expert_analysis(p_id_viz.strip())
+            if fig:
+                _, col_viz, _ = st.columns([1, 1, 1])
+                with col_viz:
+                    st.pyplot(fig)
+            else: st.error("Files not found.")
+        except Exception as e:
+            st.error(str(e))
+
+with tab6:
     st.markdown("### Config Guide")
-    st.markdown(
-        "All runtime paths and knobs live in **`config.py`** at the repository root. "
-        "Below is a concise map of the main variables, including **logging and quality-gate** options."
-    )
     try:
-        if BASE_DIR not in sys.path:
-            sys.path.append(BASE_DIR)
+        if BASE_DIR not in sys.path: sys.path.append(BASE_DIR)
         import config as cfg
-
-        st.markdown("#### Paths (data & artifacts)")
-        st.markdown(
-            f"""
-| Variable | Role |
-|----------|------|
-| `PATH_RAW` | Duke-style DICOM tree: `{cfg.PATH_RAW}` |
-| `PATH_ANNOTATION_BOXES` | ROI Excel |
-| `PATH_MICRO_CUBES` | Output/input `*_lattice.pt` tensors |
-| `PATH_CLINICAL` | Clinical spreadsheet (`Mol Subtype`, etc.) |
-| `PATH_MODEL_DIR` / `PATH_MODEL_WEIGHTS` | Saved 3D-ResNet weights |
-| `LATTICE_FILE_SUFFIX` | File suffix for cubes (default `{cfg.LATTICE_FILE_SUFFIX}`) |
-"""
-        )
-
-        st.markdown("#### Extraction logs & QA audits")
-        st.markdown(
-            f"""
-| Variable | Role |
-|----------|------|
-| `PATH_LOGS` | Append-only extraction log (`run_logs.ExtractionLogWriter` in `main.py`): `{cfg.PATH_LOGS}` |
-| `PATH_EXTRACTION_AUDIT_DIR` | Per-run **JSONL** audits (`OK` / `WARNING` / `REVIEW`): `{cfg.PATH_EXTRACTION_AUDIT_DIR}` |
-| `AUDIT_WRITE_JSONL` | **`{cfg.AUDIT_WRITE_JSONL}`** — if `False`, `main.py` skips writing JSONL records. |
-| `SHOW_VISUALIZER_AFTER_SAVE` | Pop-up matplotlib after each save (**`{cfg.SHOW_VISUALIZER_AFTER_SAVE}`**). |
-"""
-        )
-
-        st.markdown("#### Micro-cube & registration")
-        st.markdown(
-            f"""
-| Variable | Role |
-|----------|------|
-| `MICRO_CUBE_SIZE` | Fixed edge length (**{cfg.MICRO_CUBE_SIZE}**). |
-| `ROI_PADDING_FRACTION` | Peritumoral halo fraction. |
-| `PRE_POST_INTERPOLATE_MODE` | Interpolation mode (e.g. trilinear). |
-| `REGISTRATION_MIN_CORRELATION` | Post-FFT Pearson r gate for **WARNING** (**{cfg.REGISTRATION_MIN_CORRELATION}**). |
-| `HYBRID_STRUCTURAL_RATIO` | Channel 1 mix max/avg (**{cfg.HYBRID_STRUCTURAL_RATIO}**). |
-| `VAR_DENOISING_SIGMA` | Gaussian denoising before C2 variance (**{cfg.VAR_DENOISING_SIGMA}**). |
-| `C2_LOCAL_VAR_KERNEL` | **Odd** sliding window for local variance on C2 (**{cfg.C2_LOCAL_VAR_KERNEL}**). |
-"""
-        )
-
-        st.markdown("#### Training: audit filter & run logs")
-        st.markdown(
-            f"""
-| Variable | Role |
-|----------|------|
-| `TRAIN_FILTER_BY_AUDIT` | **`{cfg.TRAIN_FILTER_BY_AUDIT}`** — if `True`, `train.py` keeps only patients whose **latest** JSONL row has status in `TRAIN_ALLOWED_AUDIT_STATUSES`. Requires audit files under `PATH_EXTRACTION_AUDIT_DIR`. |
-| `TRAIN_ALLOWED_AUDIT_STATUSES` | Tuple of allowed statuses, e.g. `{cfg.TRAIN_ALLOWED_AUDIT_STATUSES}`. |
-| `PATH_TRAINING_LOG_DIR` | Per-run training `.txt` via ``run_logs.TrainingRunLogWriter`` (header, epoch lines, footer): `{cfg.PATH_TRAINING_LOG_DIR}` |
-| `TRAIN_LOG_WRITE_TXT` | **`{cfg.TRAIN_LOG_WRITE_TXT}`** — if `False`, no training run `.txt` is written. |
-| `TRAIN_STRATIFIED_SPLIT` | **`{cfg.TRAIN_STRATIFIED_SPLIT}`** — patient-level train/val with ~balanced binary labels per split. |
-| `TRAIN_USE_WEIGHTED_SAMPLER` | **`{cfg.TRAIN_USE_WEIGHTED_SAMPLER}`** — `WeightedRandomSampler` on train (mutually cautious with `TRAIN_USE_CLASS_POS_WEIGHT`). |
-| `TRAIN_USE_CLASS_POS_WEIGHT` | **`{cfg.TRAIN_USE_CLASS_POS_WEIGHT}`** — BCE `pos_weight = n_neg/n_pos` inside Focal loss. |
-"""
-        )
-
-        st.markdown("#### Training hyperparameters & early stopping")
-        st.markdown(
-            f"""
-| Variable | Role |
-|----------|------|
-| `BATCH_SIZE` | **{cfg.BATCH_SIZE}** |
-| `LEARNING_RATE` / `ONECYCLE_MAX_LR` | AdamW base LR / OneCycle peak |
-| `EPOCHS` | Max epochs (**{cfg.EPOCHS}**); early stopping usually cuts sooner. |
-| `TRAIN_VAL_SPLIT_FRACTION` | Train fraction (**{cfg.TRAIN_VAL_SPLIT_FRACTION}**). |
-| `RANDOM_SEED` | **{cfg.RANDOM_SEED}** |
-| `EARLY_STOPPING_*` | Patience / min delta / first epoch to count patience |
-| `FOCAL_LOSS_ALPHA` / `FOCAL_LOSS_GAMMA` | Focal loss tuning |
-| `ADAMW_WEIGHT_DECAY` | Weight decay |
-| `NORMALIZE_EPS` | Epsilon for cube z-score normalization |
-"""
-        )
-
-        st.markdown("#### Labels (clinical)")
-        st.markdown(
-            f"""
-| Variable | Role |
-|----------|------|
-| `CLINICAL_EXCEL_HEADER_ROW` | **{cfg.CLINICAL_EXCEL_HEADER_ROW}** (pandas `header=`). |
-| `COL_PATIENT_ID` / `COL_MOL_SUBTYPE` | Column names |
-| `MOL_SUBTYPE_POSITIVE_THRESHOLD` | Label 1 if subtype **>** this (**{cfg.MOL_SUBTYPE_POSITIVE_THRESHOLD}**). |
-"""
-        )
-
-        st.markdown("#### Model width & inference")
-        st.markdown(
-            f"""
-| Variable | Role |
-|----------|------|
-| `INPUT_CHANNELS`, `STEM_CHANNELS`, `RES_BLOCK*`, `POOL_*` | 3D-ResNet topology |
-| `CLASSIFIER_*` | Head + dropout; `CLASSIFIER_LINEAR_IN` must match pool geometry + `MICRO_CUBE_SIZE`. |
-| `META_FEATURE_DIM`, `META_MLP_OUT`, `META_NORM_SHIFT_*` | Metadata MLP input (see `helper.normalize_metadata`). |
-| `MALIGNANCY_PROB_THRESHOLD` | Sigmoid threshold for high-risk (**{cfg.MALIGNANCY_PROB_THRESHOLD}**). |
-| `INFERENCE_DEVICE` | Device string for `predict.py` (**`{cfg.INFERENCE_DEVICE}`**). |
-"""
-        )
-
-        st.caption(
-            "Tip: after changing paths or flags, restart the Streamlit app so imports pick up the new `config.py`."
-        )
+        st.markdown(f"**Inference Threshold:** `{cfg.MALIGNANCY_PROB_THRESHOLD}`")
+        st.markdown(f"**Micro-cube Shape:** `{cfg.MICRO_CUBE_SIZE}^3`")
+        st.markdown(f"**Weights File:** `{cfg.MODEL_WEIGHTS_FILENAME}`")
+        st.markdown(f"**Device:** `{cfg.INFERENCE_DEVICE}`")
     except Exception as e:
-        st.warning(f"Could not load config for this guide: {e}")
+        st.error(str(e))

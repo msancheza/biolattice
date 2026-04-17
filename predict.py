@@ -2,6 +2,10 @@ import os
 import numpy as np
 import torch
 
+# Mandatory patch for Mac (Apple Silicon): allows ops like AvgPool3d to fall back to CPU
+# when not yet implemented on MPS (mirrors the same flag in train.py).
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
 from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, confusion_matrix, roc_curve
 from torch.utils.data import DataLoader
 
@@ -9,7 +13,6 @@ import config
 from core import helper
 from core.helper import BioLatticeDataset, build_patient_level_split
 from core.run_logs import RunLogWriter
-from train import BioLattice3DResNet
 
 # Probability threshold on sigmoid output (0–1); mirrors `MALIGNANCY_PROB_THRESHOLD` in config.
 INFERENCE_PROB_THRESHOLD = config.MALIGNANCY_PROB_THRESHOLD
@@ -28,7 +31,10 @@ def predict_patient(p_id):
         print("Error: Trained model not found. Run train.py first.")
         return {"error": "Trained 3D-ResNet model not found. Make sure Model Training completed."}
 
-    device = torch.device(config.INFERENCE_DEVICE)
+    # Resolve device: 'auto' selects the best available (CUDA > MPS > CPU)
+    _device_cfg = config.INFERENCE_DEVICE
+    device = helper.get_device() if _device_cfg == "auto" else torch.device(_device_cfg)
+    from train import BioLattice3DResNet
     model = BioLattice3DResNet()
     model.load_state_dict(
         torch.load(path_weights, map_location=device, weights_only=True)
@@ -38,19 +44,20 @@ def predict_patient(p_id):
 
     # 3. Prepare the patient tensor
     data_obj = torch.load(lattice_path, map_location=device)
-    cube = data_obj['tensor'].unsqueeze(0)
     # --- Metadata (same normalization as training) ---
     meta = data_obj.get('meta', {})
     spacing = meta.get('voxel_spacing', [1.0, 1.0])
     thickness = meta.get('slice_thickness', 1.0)
-    meta_tensor = helper.normalize_metadata(spacing, thickness).unsqueeze(0).to(device)
-
+    
+    # 3. Micro-cube Processing & Normalization (Z-Score)
+    # Important: Must match helper.BioLatticeDataset logic
+    cube = data_obj['tensor']
     std = torch.std(cube)
-    cube = (
-        (cube - torch.mean(cube)) / (std + config.NORMALIZE_EPS)
-        if std > 0
-        else cube
-    )
+    if std > 0:
+        cube = (cube - torch.mean(cube)) / (std + config.NORMALIZE_EPS)
+    
+    cube = cube.unsqueeze(0).to(device)
+    meta_tensor = helper.normalize_metadata(spacing, thickness).unsqueeze(0).to(device)
 
     # 4. Clinical Inference (Binary Virtual Biopsy)
     with torch.no_grad():
@@ -77,12 +84,14 @@ def predict_patient(p_id):
 
 def evaluate_dataset():
     """ Evaluates the model on the full validation set checking ROC, Sensitivity, and Specificity. """
-    device = torch.device(config.INFERENCE_DEVICE)
+    _device_cfg = config.INFERENCE_DEVICE
+    device = helper.get_device() if _device_cfg == "auto" else torch.device(_device_cfg)
     path_weights = config.PATH_MODEL_WEIGHTS
 
     if not os.path.exists(path_weights):
         return {"error": "Trained model not found. Run Training first."}
 
+    from train import BioLattice3DResNet
     model = BioLattice3DResNet()
     model.load_state_dict(
         torch.load(path_weights, map_location=device, weights_only=True)
@@ -90,8 +99,12 @@ def evaluate_dataset():
     model.eval()
     model.to(device)
 
+    # Load audit filter — must match training to ensure metrics reflect the same distribution
+    allowed_ids, _ = helper.load_allowed_patient_ids_from_audits()
+
     dataset_val = BioLatticeDataset(
-        config.PATH_CLINICAL, config.PATH_MICRO_CUBES, augment=False
+        config.PATH_CLINICAL, config.PATH_MICRO_CUBES, augment=False,
+        allowed_patient_ids=allowed_ids
     )
     split = config.TRAIN_VAL_SPLIT_FRACTION
     _, val_dataset, _, _ = build_patient_level_split(

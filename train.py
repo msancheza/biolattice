@@ -70,6 +70,15 @@ class BioLattice3DResNet(nn.Module):
             nn.Flatten()
         )
         
+        # Dynamically compute the flattened size after spatial layers.
+        # This makes the model robust to changes in MICRO_CUBE_SIZE, POOL_KERNEL, etc.
+        # without requiring manual recalculation of CLASSIFIER_LINEAR_IN.
+        with torch.no_grad():
+            _dummy = torch.zeros(1, c.INPUT_CHANNELS, c.MICRO_CUBE_SIZE, c.MICRO_CUBE_SIZE, c.MICRO_CUBE_SIZE)
+            _dummy = self.pool1(self.block1(self.prep(_dummy)))
+            _dummy = self.pool2(self.block2(_dummy))
+            _linear_in = self.avgpool_flatten(_dummy).shape[1]
+        
         self.meta_mlp = nn.Sequential(
             nn.Linear(c.META_FEATURE_DIM, c.META_MLP_OUT),
             nn.Mish(),
@@ -77,7 +86,7 @@ class BioLattice3DResNet(nn.Module):
         )
 
         self.classifier = nn.Sequential(
-            nn.Linear(c.CLASSIFIER_LINEAR_IN + c.META_MLP_OUT, c.CLASSIFIER_HIDDEN),
+            nn.Linear(_linear_in + c.META_MLP_OUT, c.CLASSIFIER_HIDDEN),
             nn.BatchNorm1d(c.CLASSIFIER_HIDDEN),
             nn.Mish(),
             nn.Dropout(c.CLASSIFIER_DROPOUT),
@@ -87,16 +96,36 @@ class BioLattice3DResNet(nn.Module):
             nn.Linear(c.CLASSIFIER_HIDDEN // 2, 1),
         )
 
-    def forward(self, x, meta_features):
+        # Grad-CAM support
+        self.gradients = None
+        self.activations = None
+
+    def activations_hook(self, grad):
+        self.gradients = grad
+
+    def forward(self, x, meta_features, return_cam=False):
         x = self.prep(x)
         x = self.pool1(self.block1(x))
-        x = self.pool2(self.block2(x))
-
+        
+        # Capture activations for Grad-CAM
+        x = self.block2(x)
+        if return_cam:
+            self.activations = x
+            # Enable gradient tracking for this intermediate activation
+            self.activations.retain_grad()
+        
+        x = self.pool2(x)
         x_img = self.avgpool_flatten(x)
         m_feat = self.meta_mlp(meta_features)
 
         x_combined = torch.cat([x_img, m_feat], dim=1)
         return self.classifier(x_combined)
+
+    def get_gradcam_weights(self):
+        if self.activations is None or self.activations.grad is None:
+            return None
+        # Mean intensity of gradients per channel (GAP)
+        return torch.mean(self.activations.grad, dim=[2, 3, 4], keepdim=True)
 
 
 # --- Training utilities ---
@@ -176,7 +205,7 @@ class BioLatticeTrainer:
 
 def train_model():
     """High-level orchestration for training."""
-    allowed_ids, _ = helper.load_allowed_patient_ids_from_latest_audit()
+    allowed_ids, excluded_ids = helper.load_allowed_patient_ids_from_audits()
     device = helper.get_device()
     print(f"Hardware accelerator: {device}")
 
@@ -254,6 +283,7 @@ def train_model():
             device_str=str(device),
             n_dataset_train=len(dataset_train),
             n_dataset_val=len(dataset_val),
+            excluded_ids_audit=excluded_ids,
             train_size=train_size,
             val_size=val_size,
             train_batch_size=config.BATCH_SIZE,

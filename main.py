@@ -18,8 +18,7 @@ import torch.nn.functional as F
 
 import config
 from core import helper
-from core.run_logs import RunLogWriter
-from visualizer import visualize_micro_cube
+from core.run_logs import RunLogWriter 
 
 if not os.path.exists(config.PATH_MICRO_CUBES):
     os.makedirs(config.PATH_MICRO_CUBES)
@@ -265,19 +264,26 @@ def weave_4d_micro_cube(t_pre, t_post, spacing, thickness, size=None):
         align_corners=False,
     )
     
-    # --- 4. Central Padding to reach exactly [size, size, size] ---
+    # --- 4. Reflexive Padding to reach exactly [size, size, size] ---
     pad_z = size - sz
     pad_y = size - sy
     pad_x = size - sx
     
-    # (W_left, W_right, H_top, H_bottom, D_front, D_back)
     padding = (
         pad_x // 2, pad_x - (pad_x // 2),
         pad_y // 2, pad_y - (pad_y // 2),
         pad_z // 2, pad_z - (pad_z // 2)
     )
-    t_pre_final = F.pad(t_pre, padding, mode='constant', value=0)
-    t_post_final = F.pad(t_post, padding, mode='constant', value=0)
+    # Safety: reflect mode requires padding < tensor dimension.
+    # Fall back to constant (zeros) for very small ROIs where this would fail.
+    can_reflect = (
+        padding[0] < t_pre.shape[4] and padding[1] < t_pre.shape[4] and
+        padding[2] < t_pre.shape[3] and padding[3] < t_pre.shape[3] and
+        padding[4] < t_pre.shape[2] and padding[5] < t_pre.shape[2]
+    )
+    pad_mode = 'reflect' if can_reflect else 'constant'
+    t_pre_final = F.pad(t_pre, padding, mode=pad_mode)
+    t_post_final = F.pad(t_post, padding, mode=pad_mode)
         
     # CHANNEL 1: HYBRID STRUCTURE (Mixed Max for peaks + Avg for mass)
     # Applied on the padded isotropic volume
@@ -287,17 +293,21 @@ def weave_4d_micro_cube(t_pre, t_post, spacing, thickness, size=None):
     c1 = alpha * c1_max + (1 - alpha) * c1_avg
     
     # CHANNEL 2: HETEROGENEITY with Denoising Pre-processing
-    # Use local variance (sliding window), not identity pooling over same-size tensor.
-    t_denoised = apply_denoising(t_post_final, sigma=config.VAR_DENOISING_SIGMA)
+    # CRITICAL: Compute variance on real tissue (t_post, BEFORE padding) to avoid
+    # creating artificial texture symmetry from the reflect padding pattern.
+    t_denoised_real = apply_denoising(t_post, sigma=config.VAR_DENOISING_SIGMA)
     k = int(getattr(config, "C2_LOCAL_VAR_KERNEL", 3))
     if k < 1:
         k = 1
     if k % 2 == 0:
         k += 1
     p = k // 2
-    mean = F.avg_pool3d(t_denoised, kernel_size=k, stride=1, padding=p)
-    mean_sq = F.avg_pool3d(t_denoised**2, kernel_size=k, stride=1, padding=p)
-    c2 = torch.relu(mean_sq - (mean**2))
+    mean_r = F.avg_pool3d(t_denoised_real, kernel_size=k, stride=1, padding=p)
+    mean_sq_r = F.avg_pool3d(t_denoised_real**2, kernel_size=k, stride=1, padding=p)
+    c2_raw = torch.relu(mean_sq_r - (mean_r**2))
+    # Now pad the variance map to reach [size, size, size] — use constant 0 (no variance at boundary)
+    c2 = F.pad(c2_raw, padding, mode='constant', value=0.0)
+    c2 = F.adaptive_avg_pool3d(c2, output_size=(size, size, size))
     
     # CHANNEL 3: CONTRAST KINETICS (Exact spatial wash-in)
     c3 = F.adaptive_avg_pool3d(t_post_final - t_pre_final, output_size=(size, size, size))
@@ -335,9 +345,9 @@ def process_dataset():
         
         # Heuristic matching
         for s in series_found:
-            if helper.series_is_pre_contrast(s['desc']):
+            if not path_pre and helper.series_is_pre_contrast(s['desc']):
                 path_pre = s['path']
-            if helper.series_is_post_contrast(s['desc']):
+            if not path_post and helper.series_is_post_contrast(s['desc']):
                 path_post = s['path']
         
         # Fallback: if names are ambiguous (all 'ax dyn'), use order
@@ -446,8 +456,6 @@ def process_dataset():
                     },
                 )
                 
-                if config.SHOW_VISUALIZER_AFTER_SAVE:
-                    visualize_micro_cube(output_path)
                 
             except Exception as e:
                 err_msg = f"[ERROR] {p_id} | Exception: {e}"
