@@ -32,7 +32,7 @@ This repository provides everything needed to configure, generate, and validate 
 Bio-Lattice is composed of three interconnected modules that govern data from raw MRI ingestion to clinical verification:
 
 ### 1. Data Representation & Quality Assurance
-The core engine distills raw DICOM sets. Because clinical data is inherently noisy, this stage incorporates a strict **Quality Assurance (QA) Gate**:
+The core engine processes and standardizes raw DICOM sets. Because clinical data is inherently noisy, this stage incorporates a strict **Quality Assurance (QA) Gate**:
 *   **Biological Targeting:** Chronologically isolates exact pre-contrast and peak-enhancement sequences to avoid kinetic dilution.
 *   **Geometrical Integrity:** Corrects MRI slope/intercept distortions and detects spatial Z-gap discontinuities.
 *   **Mathematical Alignment:** Performs sub-voxel FFT registration to correct for respiratory motion between phases.
@@ -66,10 +66,17 @@ The validation sandbox uses the **`Mol Subtype`** column from the clinical file 
 
 ## Setup & Usage
 
-### 1. Requirements and Installation
-* Python 3.10+
-* Duke Cohort data structure (`datasets/raw_data/`, `datasets/Annotation_Boxes.xlsx`, `datasets/Clinical_and_Other_Features.xlsx`). Note: Raw DICOM files are purposely gitignored due to massive storage requirements.
+### 1. Dataset Access (Duke Breast MRI)
+The foundational data for this project originates from the public **Duke Breast Cancer MRI dataset** (via TCIA). Because raw DICOM MRI sequences require hundreds of gigabytes of storage, they are purposely gitignored. 
 
+To bypass the heavy DICOM extraction phase, you can download the pre-computed Micro-Cubes directly from Hugging Face:
+🔗 **[HuggingFace: msancheza/microCube-Duke-Breast-MRI](https://huggingface.co/datasets/msancheza/microCube-Duke-Breast-MRI)**
+
+Place the downloaded `*_lattice.pt` files into your local `datasets/micro_cubes/` directory to run inference or training immediately.
+
+### 2. Requirements and Installation
+* Python 3.10+
+* *(If extracting from scratch)*: Duke Cohort data structure (`datasets/raw_data/`, `datasets/Annotation_Boxes.xlsx`, `datasets/Clinical_and_Other_Features.xlsx`).
 ```bash
 git clone https://github.com/msancheza/biolattice.git
 cd biolattice
