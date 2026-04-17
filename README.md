@@ -64,17 +64,6 @@ The validation sandbox uses the **`Mol Subtype`** column from the clinical file 
 *   **Optimization:** Focal Loss emphasizes hard examples. The image embeddings are concatenated with a small MLP processing the embedded physical metadata (`PixelSpacing` + `SliceThickness`).
 *   **Performance Tracking:** Telemetry is written securely to `dashboard/training_logs/` providing epoch-by-epoch loss tracking without third-party dependencies.
 
-## Technical Improvements (v2)
-
-| Module | Phase | Improvement | Version |
-|--------|-------|-------------|--------|
-| **Extraction** | Physicality | Applied **Rescale Slope/Intercept** for inter-scanner compatibility. | v2 |
-| **Registration** | Geometry | Added **3D Phase Correlation (FFT)** for robust, non-circular rigid translation. | v2 |
-| **Padding** | Weave | **Reflexive Padding** (`mode='reflect'`) replaces zero-padding, eliminating boundary gradients. | v2.2 |
-| **Heterogeneity** | Weave | Local variance computed strictly over real tissue (pre-padding) to ensure valid variance maps. | v2.2 |
-| **Architecture** | Training | Linear layers fully dynamic via dry-run forward pass. Resilient to geometric changes. | v2.2 |
-| **Device** | Inference | Hardware-agnostic fallback (`INFERENCE_DEVICE = "auto"`) covering CUDA, MPS, and CPU. | v2.2 |
-
 ## Setup & Usage
 
 ### 1. Requirements and Installation
