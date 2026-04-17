@@ -1,121 +1,128 @@
+import os
+# Mandatory patch for Mac (Apple Silicon): allows ops like AvgPool3d to fall back to CPU
+# when not yet implemented on MPS (mirrors the same flag in train.py).
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
 import torch
+import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import FancyBboxPatch
 
 import config
+from core import helper
 
-# Minimalist palette (neutral background + soft accents per channel)
 _STYLE = {
-    "fig_bg": "#e6e8ed",
-    "card_face": "#ffffff",
-    "card_edge": "#c5cdd9",
-    "title": "#1e293b",
-    "subtitle": "#64748b",
-    "cmaps": ["gray", "magma", "cividis"],
-    "tags": [
-        {"code": "C1", "label": "Hybrid Str", "bg": "#ccfbf1", "edge": "#2dd4bf", "fg": "#0f766e"},
-        {"code": "C2", "label": "Denoised Het", "bg": "#fef3c7", "edge": "#f59e0b", "fg": "#b45309"},
-        {"code": "C3", "label": "Aligned Kin", "bg": "#e0e7ff", "edge": "#818cf8", "fg": "#3730a3"},
-    ],
+    "fig_bg": "#000000",
+    "card_face": "#111111",
+    "card_edge": "#333333",
+    "title": "#ffffff",
+    "subtitle": "#aaaaaa",
+    "cmaps": ["gray", "hot", "viridis"],
+    "accent": "#00f2ff" # Neon cyan
 }
 
+def compute_gradcam(patient_id, device="cpu"):
+    """Computes Grad-CAM 3D for a specific patient using weights manually-loaded."""
+    from train import BioLattice3DResNet
+    
+    lattice_path = os.path.join(config.PATH_MICRO_CUBES, f"{patient_id}{config.LATTICE_FILE_SUFFIX}")
+    path_weights = config.PATH_MODEL_WEIGHTS
+    
+    if not os.path.exists(lattice_path) or not os.path.exists(path_weights):
+        return None
+    
+    model = BioLattice3DResNet().to(device)
+    model.load_state_dict(torch.load(path_weights, map_location=device, weights_only=True))
+    model.eval()
+    
+    data_obj = torch.load(lattice_path, map_location=device, weights_only=True)
+    raw_cube = data_obj['tensor']
+    # Normalize for model input
+    std = torch.std(raw_cube)
+    norm_cube = (raw_cube - torch.mean(raw_cube)) / (std + config.NORMALIZE_EPS) if std > 0 else raw_cube
+    model_input = norm_cube.unsqueeze(0).to(device)
+    
+    meta = data_obj.get('meta', {})
+    meta_tensor = helper.normalize_metadata(
+        meta.get('voxel_spacing', [1.0, 1.0]), 
+        meta.get('slice_thickness', 1.0)
+    ).unsqueeze(0).to(device)
+    
+    # Inference with Grad-CAM
+    model.zero_grad()
+    model_input.requires_grad = True
+    logits = model(model_input, meta_tensor, return_cam=True)
+    logits.backward()
+    
+    weights = model.get_gradcam_weights() # [1, C, 1, 1, 1]
+    # Use the activations from the model (retained grad)
+    activations = model.activations.detach()
+    
+    cam = torch.sum(weights * activations, dim=1, keepdim=True)
+    cam = torch.relu(cam)
+    cam = torch.nn.functional.interpolate(cam, size=raw_cube.shape[1:], mode='trilinear').squeeze().detach().cpu().numpy()
+    
+    if cam.max() > 0:
+        cam /= cam.max()
+        
+    return cam, raw_cube.detach().cpu().numpy()
 
-def visualize_micro_cube(tensor_path, show=True):
-    data_obj = torch.load(tensor_path, map_location="cpu")
-    cube = data_obj['tensor']
-    slice_idx = config.MICRO_CUBE_SIZE // 2
+def visualize_expert_analysis(patient_id):
+    """Produces an expert clinical visualization with a 2x2 grid and diagnostic dark theme."""
+    # Resolve device: 'auto' selects the best available (CUDA > MPS > CPU)
+    _device_cfg = config.INFERENCE_DEVICE
+    device = helper.get_device() if _device_cfg == "auto" else torch.device(_device_cfg)
+    result = compute_gradcam(patient_id, device=device)
+    if result is None:
+        return None
+        
+    cam, cube = result
+    # Select Z-slice by highest MEAN activation per slice (more robust than absolute max).
+    # The absolute max voxel can be a peripheral outlier; the mean captures the dominant focus region.
+    z_slice = int(np.argmax(np.mean(cam, axis=(1, 2))))
+    
+    # Large 2x2 grid with dark background
+    fig, axes = plt.subplots(2, 2, figsize=(10, 10), facecolor=_STYLE["fig_bg"])
+    plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.92, hspace=0.3, wspace=0.2)
+    
+    axes = axes.flatten()
+    
+    # 1. Anatomy (PROTAGONIST)
+    axes[0].imshow(cube[0, z_slice], cmap='gray')
+    axes[0].set_title(f"ANATOMY (Z={z_slice})", fontsize=12, fontweight=700, color=_STYLE["title"])
+    axes[0].axis('off')
+    
+    # 2. AI ATTENTION (PROTAGONIST)
+    axes[1].imshow(cube[0, z_slice], cmap='gray')
+    axes[1].imshow(cam[z_slice], cmap='jet', alpha=0.65)
+    axes[1].set_title("AI ATTENTION FOCUS", fontsize=12, fontweight=800, color=_STYLE["accent"])
+    axes[1].axis('off')
 
-    fig, axes = plt.subplots(1, 3, figsize=(14, 5.2), facecolor=_STYLE["fig_bg"])
+    # 3. HETEROGENEITY (C2)
+    c2_slice = cube[1, z_slice]
+    vmax_c2 = np.percentile(c2_slice, 99)
+    if vmax_c2 <= c2_slice.min(): vmax_c2 = c2_slice.max() + 1e-9
+    axes[2].imshow(c2_slice, cmap='magma', vmax=vmax_c2)
+    axes[2].set_title("C2: HETEROGENEITY", fontsize=10, color=_STYLE["subtitle"])
+    axes[2].axis('off')
 
-    fig.suptitle(
-        "Multi-modal Micro-cube · Middle Axial Slice",
-        fontsize=15,
-        fontweight=600,
-        color=_STYLE["title"],
-        y=0.97,
-    )
-
-    channel_titles = [
-        "Channel 1 · hybrid (max + avg)",
-        "Channel 2 · denoised heterogeneity",
-        "Channel 3 · aligned wash-in (post − pre)",
-    ]
-
-    for i, ax in enumerate(axes):
-        slice_2d = cube[i, slice_idx, :, :].numpy()
-        tag = _STYLE["tags"][i]
-
-        im = ax.imshow(slice_2d, cmap=_STYLE["cmaps"][i], interpolation="nearest")
-        ax.axis("off")
-
-        # Top tag (pill)
-        ax.text(
-            0.04,
-            0.96,
-            f'{tag["code"]}\n{tag["label"]}',
-            transform=ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=9,
-            fontweight=600,
-            color=tag["fg"],
-            linespacing=1.15,
-            bbox={
-                "boxstyle": "round,pad=0.45,rounding_size=0.15",
-                "facecolor": tag["bg"],
-                "edgecolor": tag["edge"],
-                "linewidth": 1,
-                "alpha": 0.92,
-            },
-        )
-
-        cb = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, shrink=0.82)
-        cb.outline.set_edgecolor(_STYLE["card_edge"])
-        cb.ax.tick_params(colors=_STYLE["subtitle"], labelsize=8)
-
-        # Bottom card (panel footer)
-        ax.text(
-            0.5,
-            -0.065,
-            channel_titles[i],
-            transform=ax.transAxes,
-            ha="center",
-            va="top",
-            fontsize=10,
-            color=_STYLE["title"],
-            bbox={
-                "boxstyle": "round,pad=0.5,rounding_size=0.2",
-                "facecolor": _STYLE["card_face"],
-                "edgecolor": _STYLE["card_edge"],
-                "linewidth": 0.9,
-                "alpha": 0.98,
-            },
-        )
-
-    plt.subplots_adjust(top=0.88, bottom=0.18, left=0.05, right=0.96, wspace=0.28)
-
-    # Card-like frames behind each panel
-    for ax in axes:
-        pos = ax.get_position()
-        pad_x, pad_y = 0.01, 0.015
-        extra_bottom = 0.055
-        card = FancyBboxPatch(
-            (pos.x0 - pad_x, pos.y0 - pad_y - extra_bottom),
-            pos.width + 2 * pad_x,
-            pos.height + 2 * pad_y + extra_bottom,
-            boxstyle="round,pad=0.008,rounding_size=0.018",
-            transform=fig.transFigure,
-            facecolor=_STYLE["card_face"],
-            edgecolor=_STYLE["card_edge"],
-            linewidth=0.85,
-            zorder=0,
-            clip_on=False,
-        )
-        fig.add_artist(card)
-        ax.set_zorder(2)
-
-    if show:
-        plt.show()
+    # 4. KINETICS (C3)
+    c3_slice = cube[2, z_slice]
+    vmax_c3 = np.percentile(c3_slice, 99)
+    if vmax_c3 <= c3_slice.min(): vmax_c3 = c3_slice.max() + 1e-9
+    axes[3].imshow(c3_slice, cmap='cividis', vmax=vmax_c3)
+    axes[3].set_title("C3: KINETICS", fontsize=10, color=_STYLE["subtitle"])
+    axes[3].axis('off')
+    
+    fig.suptitle(f"Bio-Lattice Expert Console · {patient_id}", 
+                 fontsize=14, fontweight=700, color=_STYLE["title"])
+    
     return fig
 
-# Usage: visualize_micro_cube('datasets/micro_cubes/Breast_MRI_001_lattice.pt')
+if __name__ == "__main__":
+    # Test execution
+    pid = "Breast_MRI_001"
+    fig = visualize_expert_analysis(pid)
+    if fig:
+        plt.show()
+    else:
+        print("Required files not found.")

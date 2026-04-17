@@ -49,7 +49,8 @@ MOL_SUBTYPE_POSITIVE_THRESHOLD = 0.0  # label 1.0 if value > this threshold
 MICRO_CUBE_SIZE = 64
 ROI_PADDING_FRACTION = 0.20
 PRE_POST_INTERPOLATE_MODE = "trilinear"
-SHOW_VISUALIZER_AFTER_SAVE = False
+# DEPRECATED v2.2: The popup visualizer was removed from main.py. This flag has no effect.
+# SHOW_VISUALIZER_AFTER_SAVE = False
 
 # =============================================================================
 # 6. Registration, hybrid lattice (v2), and extraction audit
@@ -64,12 +65,12 @@ AUDIT_WRITE_JSONL = True
 # =============================================================================
 # 7. Training loop (data quality gates, optimization, imbalance)
 # =============================================================================
-TRAIN_FILTER_BY_AUDIT = False
+TRAIN_FILTER_BY_AUDIT = True           # Only train on audited-quality patients (OK + WARNING)
 TRAIN_ALLOWED_AUDIT_STATUSES = ("OK", "WARNING")
 # Per-run training summary (.txt): host, timestamps, sample counts, optional early-stop stats.
 TRAIN_LOG_WRITE_TXT = True
 
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 LEARNING_RATE = 5e-5
 EPOCHS = 100
 TRAIN_VAL_SPLIT_FRACTION = 0.8
@@ -84,7 +85,7 @@ TRAIN_STRATIFIED_SPLIT = True  # patient-level train/val preserving ~label ratio
 TRAIN_USE_WEIGHTED_SAMPLER = False  # oversample minority class each epoch (DataLoader sampler)
 TRAIN_USE_CLASS_POS_WEIGHT = True  # BCE pos_weight = n_neg / n_pos inside FocalLoss
 ADAMW_WEIGHT_DECAY = 1e-2
-ONECYCLE_MAX_LR = 5e-4
+ONECYCLE_MAX_LR = 2.5e-4
 NORMALIZE_EPS = 1e-8
 
 # =============================================================================
@@ -110,8 +111,10 @@ POOL_STRIDE = 2
 # =============================================================================
 # Default operating point for current model stage.
 # Recalibrate after each training cycle using validation threshold sweep (Youden report).
-MALIGNANCY_PROB_THRESHOLD = 0.50
-INFERENCE_DEVICE = "cpu"
+MALIGNANCY_PROB_THRESHOLD = 0.55
+# 'auto' resolves to CUDA > MPS > CPU at runtime via helper.get_device().
+# Force a specific device by setting this to 'cpu', 'cuda', or 'mps'.
+INFERENCE_DEVICE = "auto"
 
 # =============================================================================
 # 10. Metadata branch (spacing / thickness → MLP)

@@ -17,3 +17,4 @@ scripts/
 v2/
 .env
 dashboard/training_logs/
+dashboard/extraction_audits/
