@@ -1,102 +1,89 @@
-# microCube (Bio-Lattice) - v2
+# Bio-Lattice (microCube) - v2
 
-[![Release](https://img.shields.io/github/v/release/msancheza/biolattice?color=green)](https://github.com/msancheza/biolattice/releases/latest)
+[![Version](https://img.shields.io/badge/version-2.0--alpha-orange)](https://github.com/msancheza/biolattice)
 [![License](https://img.shields.io/github/license/msancheza/biolattice)](https://github.com/msancheza/biolattice/blob/main/LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 
-## Overview
+## Bio-Lattice: A proposed representation for 4D-MRI
 
-Bio-Lattice is a **Data Representation Framework** for 4D Medical Imaging. 
+Bio-Lattice is presented as a research prototype focused on transforming magnetic resonance sequences (DCE-MRI) into compact data structures. The approach is based on the generation of a **Micro-Cube**: a $64^3$ tensor that captures spatial and temporal information within a unified structure.
 
-*   **What it is:** An extraction pipeline that converts complex, multi-phase breast MRI sequences (DICOM) into standardized 3D tensors.
-*   **What it produces:** The **Micro-Cube**, a compact tensor representation that merges spatial anatomy and temporal dynamics.
-*   **Why it matters:** It abstracts away the heavy engineering complexity of native 4D medical imaging (registration, metadata, padding), allowing data scientists to plug clean data directly into downstream models.
+### Design components
+The system implements a four-layer extraction of technical information over the Region of Interest (ROI):
 
-## Core Concept: The Micro-Cube
+1.  **Anatomy:** Structural representation through post-contrast intensity averages.
+2.  **Variability:** Local variance map to quantify tissue heterogeneity.
+3.  **Kinetics:** Calculation of the relative enhancement rate (log-compressed) between phases.
+4.  **Vascular Highlights:** Isolation of peak enhancement signals against the structural average.
 
-Rather than feeding raw slices into a network, Bio-Lattice constructs an explicit `[4, 64, 64, 64]` representation tensor featuring:
+### Workflow application
+The tool facilitates the use of 4D data in conventional Deep Learning models by reducing data volume from gigabytes to megabytes without omitting critical clinical dimensions. The project uses this method to explore the correlation between imaging features and molecular subtypes in oncological research environments.
 
-1.  **C1 (Anatomy/Avg):** Mean structural intensities capturing global morphology.
-2.  **C2 (Texture/Heterogeneity):** Local intensity variance (Log1p-compressed) for intra-tumoral heterogeneity.
-3.  **C3 (Kinetics):** Contrast wash-in dynamics, computed via **Signed Log-Compression** of the Percent Enhancement Ratio. This stabilizes outliers while preserving the hierarchy of biological aggression. 
-4.  **C4 (Vascular Peaks):** Orthogonalized enhancement picos (`Max - Avg`) with a ReLU guard, isolating high-intensity vascular hotspots from the anatomical background.
+## Repository Contents
 
-**Metadata Integration:** Key physical parameters (`PixelSpacing`, `SliceThickness`) are normalized via Z-score scaling and processed through a dedicated MLP, ensuring the model remains scale-invariant.
+This framework provides tools for representation generation and validated benchmarking:
+*   **Extraction Engine (`main.py`):** The core DICOM parser, registration suite, QA gating, and tensor assembly pipeline.
+*   **Validation Sandbox (`train.py`):** A 3D-ResNet reference model included as a systematic test framework to evaluate whether the extracted Micro-Cubes retain predictive signal relative to target labels.
+*   **Evaluation Interface (`dashboard/app.py`):** A research UI featuring Grad-CAM 3D, designed to map network attention against the isolated Anatomy, Heterogeneity, and Kinetic channels.
 
-## What's in this repository
+## System Architecture
 
-This repository provides everything needed to configure, generate, and validate the representations:
-*   **Extraction Engine (`main.py`):** The core DICOM parser, registration, QA gating, and tensor assembly pipeline.
-*   **Validation Sandbox (`train.py`):** An embedded 3D-ResNet reference model. Included strictly as a test framework to empirically evaluate whether the extracted Micro-Cubes retain predictive signal relevant to the target task. 
-*   **Explainability Interface (`visualizer.py` & `dashboard/app.py`):** A diagnostic UI featuring Grad-CAM 3D, designed to visually map the network's focal points against the extracted clinical channels.
+The workflow is divided into three modules:
 
-## The Workflow
+### 1. Extraction and Quality Control
+The pipeline standardizes raw DICOM data and implements a systematic registration process:
+*   **Sequence Filtering:** Identifies pre-contrast and peak-enhancement series based on chronological metadata.
+*   **Registration:** Uses FFT-based phase correlation to align volumes, accounting for patient movement between series.
+*   **Padding Strategy:** Applies conditional padding to maintain a consistent region-of-interest (ROI) shape.
+*   **Audit Logging:** Generates a structured audit trail (JSONL) to track registration quality and data consistency.
 
-Bio-Lattice is composed of three interconnected modules that govern data from raw MRI ingestion to clinical verification:
+### 2. Benchmark Environment
+Includes a testing framework to evaluate if the extracted tensors retain predictive signals. This module implements training procedures such as Focal Loss and class balancing to handle imbalanced medical datasets.
 
-### 1. Data Representation & Quality Assurance
-The core engine processes and standardizes raw DICOM sets. Because clinical data is inherently noisy, this stage incorporates a strict **Quality Assurance (QA) Gate**:
-*   **Biological Targeting:** Chronologically isolates exact pre-contrast and peak-enhancement sequences to avoid kinetic dilution.
-*   **Mathematical Alignment:** Performs sub-voxel FFT registration using **first-order linear interpolation** to eliminate ringing artifacts and ensure intensity integrity.
-*   **Semantic Safety (Padding):** Implements a conditional padding policy (**Kaleidoscope Fix**); tiny ROIs use constant zero-padding while larger volumes utilize reflexive padding, eliminating symmetry-based symmetry artifacts.
-*   **Audit Segregation:** Cases with irrecoverable motion or missing temporal phases are actively segregated (`REVIEW`) via a structured `JSONL` audit trail.
+### 3. Analysis Interface
+Provides a tool to visualize model attention maps (Grad-CAM 3D) alongside individual Micro-Cube channels, facilitating the review of which anatomical or kinetic features influence the outputs.
 
-### 2. Validation Sandbox
-To evaluate the predictive performance of the extracted Micro-Cubes, the framework consumes the curated dataset and performs supervised learning using a specified ground truth. It dynamically handles class balancing, computes Focal Loss, and enforces Early Stopping, ensuring a robust baseline evaluation
+## Research Context: Molecular Subtype Estimation
 
-### 3. Clinical Explainability
-To provide visual interpretability signals, the inference module generates probabilistic risk assessments, while the companion **Expert Console** computes attention heatmaps. Investigators can visually cross-reference the network's focal points directly against the isolated Anatomy, Heterogeneity, and Kinetic channels.
+The current implementation utilizes the Duke Breast MRI dataset with the following focus:
 
-## Clinical Framing: From Detection to Phenotyping
+*   **Task Definition:** The validation objective is to evaluate the correlation between extracted imaging features and reported molecular subtypes.
+*   **Methodological Role:** The Micro-Cube serves as a standardized input for downstream classification tasks, comparing image-derived patterns against known biological markers.
 
-When testing the framework using the Duke Breast MRI dataset, the task must be framed correctly:
+## Training Configuration & Benchmarking
 
-*   **Oncologic Data Reality:** The Duke dataset is a purely oncological cohort. Training a standard algorithm to "detect" cancer in a database where all patients are confirmed positive is not mathematically viable.
-*   **Strategic Pivot:** Bio-Lattice acts as a **Virtual Risk Phenotype** representation layer. Rather than detecting cancer, the validation sandbox estimates a tumor's biological aggressiveness, aligning its predictions with the **Molecular Subtype** reported by pathology.
-*   **Architecture Scalability:** When applied to distinct medical datasets containing healthy controls, this same representation framework can support traditional diagnosis or triage tasks without modifying its extraction logic.
+The validation sandbox utilizes the **`Mol Subtype`** targets for benchmarking purposes.
 
-## Training Details & Ground Truth
+| Target Category | Code | Clinical Context (Reference) |
+|-----------------|------|-----------------------------|
+| **Lower Risk** | `0` | Luminal A |
+| **Higher Risk** | `1` | Luminal B, HER2+, Triple Negative |
 
-The validation sandbox uses the **`Mol Subtype`** column from the clinical file as its training target.
+*   **Optimization:** Focal Loss is used to emphasize difficult-to-classify samples. Telemetry is recorded locally in `dashboard/training_logs/` for offline performance analysis.
 
-| Code label | Rule in `helper.BioLatticeDataset` | Clinical Meaning |
-|------------|-----------------------------------|------------------|
-| **0** | `Mol Subtype = 0` | **Lower Risk** (Luminal A) |
-| **1** | `Mol Subtype > 0` | **Higher Risk** (Luminal B, HER2+, Triple Negative) |
+## Setup & Execution
 
-*   **Optimization:** Focal Loss emphasizes hard examples. The image embeddings are concatenated with a small MLP processing the embedded physical metadata (`PixelSpacing` + `SliceThickness`).
-*   **Performance Tracking:** Telemetry is written securely to `dashboard/training_logs/` providing epoch-by-epoch loss tracking without third-party dependencies.
-
-## Setup & Usage
-
-### 1. Dataset Access (Duke Breast MRI)
-The foundational data for this project originates from the public **Duke Breast Cancer MRI dataset** (via TCIA). Because raw DICOM MRI sequences require hundreds of gigabytes of storage, they are purposely gitignored. 
-
-To bypass the heavy DICOM extraction phase, you can download the pre-computed Micro-Cubes directly from Hugging Face:
-🔗 **[HuggingFace: msancheza/microCube-Duke-Breast-MRI](https://huggingface.co/datasets/msancheza/microCube-Duke-Breast-MRI)**
-
-Place the downloaded `*_lattice.pt` files into your local `datasets/micro_cubes/` directory to run inference or training immediately.
-
-### 2. Requirements and Installation
+### 1. Requirements
 * Python 3.10+
-* *(If extracting from scratch)*: Duke Cohort data structure (`datasets/raw_data/`, `datasets/Annotation_Boxes.xlsx`, `datasets/Clinical_and_Other_Features.xlsx`).
+* Dataset Structure: Duke Cohort format (DICOM folders + Annotation/Clinical Excel files).
+
+### 2. Installation
 ```bash
 git clone https://github.com/msancheza/biolattice.git
 cd biolattice
-python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Execution Operations
-*   **Configure:** Adjust parameters, paths, and hardware targets centrally in `config.py`.
-*   **Extract:** Run `python main.py` to walk the DICOM tree, enforce the Quality Gate, and generate `*_lattice.pt` capsules into `datasets/micro_cubes/`.
-*   **Validate:** Run `python train.py` to benchmark the capsules by training the ResNet sandbox layer.
-*   **Explore:** Launch `streamlit run dashboard/app.py` to use the interactive orchestrator, analyze metrics, and invoke the Grad-CAM visualizer.
+### 3. Operations
+*   **Extract:** `python main.py` to generate `.pt` capsules from raw DICOMs.
+*   **Validate:** `python train.py` to run the ResNet benchmark.
+*   **Analyze:** `streamlit run dashboard/app.py` to explore metrics and visual heatmaps.
 
-## Green AI & Computational Efficiency
+## Computational Efficiency
 
-Instead of training massive 3D Convolutional Networks directly on gigabytes of DICOMs, Bio-Lattice mathematically condenses imaging data from gigabyte-scale DICOM series to megabyte-scale tensors prior to deep learning. This allows the sandbox to train natively on consumer-grade hardware (e.g., Apple Silicon) in minutes rather than days on cloud GPUs, drastically reducing operational carbon footprints.
+By pre-processing DICOM series into compact tensors, the workflow reduces data dimensionality before training. This reduction in memory and storage requirements allows for more efficient iterations with 3D architectures compared to training on raw volumetric sequences.
 
+---
 <div align="center">
-🔬 Research prototype only — not for clinical use
+🔬 <i>Research prototype — not for clinical or diagnostic use.</i>
 </div>

@@ -225,6 +225,7 @@ class RunLogWriter:
         confusion: dict,
         configured_threshold: float,
         best_threshold_youden: dict,
+        roc_curve: dict | None = None,
     ) -> None:
         lines = [
             "=== Bio-Lattice metrics run ===",
@@ -251,4 +252,12 @@ class RunLogWriter:
             f"sensitivity: {best_threshold_youden.get('sensitivity', 0.0):.4f}",
             f"specificity: {best_threshold_youden.get('specificity', 0.0):.4f}",
         ]
+        
+        if roc_curve and "fpr" in roc_curve and "tpr" in roc_curve:
+            lines.append("")
+            lines.append("--- ROC Curve points ---")
+            # We store a compact representation for the dashboard to parse
+            lines.append(f"fpr: {roc_curve['fpr']}")
+            lines.append(f"tpr: {roc_curve['tpr']}")
+            
         self.write("\n".join(lines), mode="w")

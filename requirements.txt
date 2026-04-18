@@ -21,7 +21,9 @@ torchvision==0.21.0
 
 # --- Dashboard ---
 streamlit>=1.30.0
+plotly>=5.18.0
 
-# --- Scripts (e.g. Hugging Face upload) ---
+# --- Scripts (e.g. Hugging Face upload, Progress Bars) ---
+tqdm>=4.66.0
 python-dotenv>=1.0.0
 huggingface_hub>=0.20.0

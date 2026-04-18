@@ -186,12 +186,17 @@ def register_volumes_fft(v_pre, v_post, patient_id=None):
         shifts.append(int(s))
     
     # 7. Apply physical affine shift (non-circular)
-    # Bio-Lattice v2.6.1: Force order=1 (linear) to avoid ringing artifacts (Gibbs phenomenon)
-    # and artificial negative intensities in the registered volume.
-    v_pre_reg = scipy.ndimage.shift(v_pre, shifts, mode='constant', cval=0.0, order=1)
+    # Bio-Lattice v2.7 Scientific Hygiene: Use 'nearest' for small anatomical drifts
+    # to avoid blank slabs, but keep 'constant' for large shifts to trigger the Zero-Gate.
+    max_dim = max(v_pre.shape)
+    shift_magnitude = np.linalg.norm(shifts)
+    rel_shift = shift_magnitude / max_dim
+    is_small_drift = rel_shift < config.EXTRACTION_MAX_RELATIVE_SHIFT
+    
+    shift_mode = 'nearest' if is_small_drift else 'constant'
+    v_pre_reg = scipy.ndimage.shift(v_pre, shifts, mode=shift_mode, cval=0.0, order=1)
     
     # 8. Compute QA Metric: Correlation Coefficient
-    # Flat correlation as a fast proxy for alignment quality
     corr = np.corrcoef(v_pre_reg.flatten(), v_post.flatten())[0, 1]
     
     return v_pre_reg, shifts, corr
@@ -272,6 +277,16 @@ def weave_4d_micro_cube(t_pre, t_post, spacing, thickness, size=None):
     # Bio-Lattice v2.5.3 Policy: Use signed log1p to compress noise while preserving 
     # the hierarchy of magnitudes (essential for distinguishing levels of malignancy).
     kinetics_raw = torch.sign(ratio) * torch.log1p(torch.abs(ratio))
+
+    # --- Bio-Lattice v2.7.4 Authority Gate: ROI Zero-Masking ---
+    # Detect if registration vacuum (zeros) entered the tissue volume.
+    # We count zeros in the pre-interpolation T1w pre-contrast map.
+    zero_mask = (t_pre_iso == 0).float()
+    roi_zero_fraction = float(torch.mean(zero_mask).item())
+
+    # Mandatory hygiene: Clamp kinetics to protect the gradient.
+    c_limit = config.EXTRACTION_KINETICS_CLAMP
+    kinetics_raw = torch.clamp(kinetics_raw, -c_limit, c_limit)
     
     # 4.2 HETEROGENEITY (Variance with Denoising)
     t_denoised_real = apply_denoising(t_post_iso, sigma=config.VAR_DENOISING_SIGMA)
@@ -318,7 +333,8 @@ def weave_4d_micro_cube(t_pre, t_post, spacing, thickness, size=None):
     c4_max = F.adaptive_max_pool3d(t_post_final, output_size=(size, size, size))
     c4 = torch.relu(c4_max - c1)
     
-    return torch.cat([c1, c2, c3, c4], dim=1).squeeze(0)  # [4, S, S, S]
+    cube = torch.cat([c1, c2, c3, c4], dim=1).squeeze(0)  # [4, S, S, S]
+    return cube, roi_zero_fraction
 
 def process_dataset():
     df_boxes = pd.read_excel(config.PATH_ANNOTATION_BOXES)
@@ -353,7 +369,8 @@ def process_dataset():
         for s in series_found:
             if helper.series_is_pre_contrast(s['desc']):
                 path_pre = s['path']
-            if helper.series_is_post_contrast(s['desc']):
+            # Bio-Lattice v2.9.1: Prioritize the FIRST post-contrast phase (peak enhancement)
+            if helper.series_is_post_contrast(s['desc']) and path_post is None:
                 path_post = s['path']
         
         # Fallback: if names are ambiguous (all 'ax dyn'), use order
@@ -404,7 +421,7 @@ def process_dataset():
                     pixel_spacing = [1.0, 1.0]
                     slice_thickness = 1.0
 
-                micro_cube = weave_4d_micro_cube(
+                micro_cube, zero_fraction = weave_4d_micro_cube(
                     t_pre_roi, t_post_roi, 
                     spacing=pixel_spacing, 
                     thickness=slice_thickness
@@ -458,6 +475,7 @@ def process_dataset():
                         "micro_cube_shape": list(micro_cube.shape),
                         "orig_post_shape": list(v_post.shape),
                         "roi_coords": list(coords),
+                        "roi_zero_fraction": zero_fraction,
                         **channel_stats,
                     },
                 )
