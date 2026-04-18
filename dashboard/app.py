@@ -109,28 +109,6 @@ with tab4:
                 else: cA.success("✅ NEGATIVE (LOWER RISK PHENOTYPE)")
                 cB.metric("Risk Index", f"{res['risk_percent']:.2f}%")
                 
-                # --- RESTORE PREVIOUS VIZ STYLE ---
-                try:
-                    import visualizer
-                    importlib.reload(visualizer)
-                    # We can reuse compute_gradcam from visualizer
-                    result = visualizer.compute_gradcam(p_id_inf.strip())
-                    if result:
-                        cam, cube = result
-                        z = np.unravel_index(np.argmax(cam), cam.shape)[0]
-                        import matplotlib.pyplot as plt
-                        fig, ax = plt.subplots(1, 2, figsize=(8, 4), facecolor="black")
-                        ax[0].imshow(cube[0, z], cmap='gray')
-                        ax[0].set_title(f"ANATOMY (Z={z})", color="white", fontsize=8)
-                        ax[0].axis('off')
-                        ax[1].imshow(cube[0, z], cmap='gray')
-                        ax[1].imshow(cam[z], cmap='jet', alpha=0.65)
-                        ax[1].set_title("AI ATTENTION FOCUS", color="#00f2ff", fontsize=8)
-                        ax[1].axis('off')
-                        st.pyplot(fig)
-                except Exception as viz_err:
-                    st.warning(f"Note: Visual explanation skipped ({viz_err})")
-                    
                 st.caption(f"Configured Positive Threshold: ≥ {res['threshold_percent']:.0f}%")
         except Exception as e:
             st.error(str(e))

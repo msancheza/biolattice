@@ -186,8 +186,9 @@ def register_volumes_fft(v_pre, v_post, patient_id=None):
         shifts.append(int(s))
     
     # 7. Apply physical affine shift (non-circular)
-    # Bio-Lattice v2.1: Prevents phantom noise from wrap-around in the border (Breast MRI context)
-    v_pre_reg = scipy.ndimage.shift(v_pre, shifts, mode='constant', cval=0.0)
+    # Bio-Lattice v2.6.1: Force order=1 (linear) to avoid ringing artifacts (Gibbs phenomenon)
+    # and artificial negative intensities in the registered volume.
+    v_pre_reg = scipy.ndimage.shift(v_pre, shifts, mode='constant', cval=0.0, order=1)
     
     # 8. Compute QA Metric: Correlation Coefficient
     # Flat correlation as a fast proxy for alignment quality
@@ -251,68 +252,73 @@ def weave_4d_micro_cube(t_pre, t_post, spacing, thickness, size=None):
     sx = max(1, int(round(size * Lx / Lmax)))
     
     # --- 3. Resample PRE and POST to the intermediate isotropic shape ---
-    t_pre = F.interpolate(
+    t_pre_iso = F.interpolate(
         t_pre,
         size=(sz, sy, sx),
         mode=config.PRE_POST_INTERPOLATE_MODE,
         align_corners=False,
     )
-    t_post = F.interpolate(
+    t_post_iso = F.interpolate(
         t_post,
         size=(sz, sy, sx),
         mode=config.PRE_POST_INTERPOLATE_MODE,
         align_corners=False,
     )
+
+    # 4.1 KINETICS (Percent Enhancement with Signed Log-Compression v2.5.3)
+    eps = 1e-6
+    # (Post - Pre) / Pre -> Capture the relative biological response
+    ratio = (t_post_iso - t_pre_iso) / (torch.abs(t_pre_iso) + eps)
+    # Bio-Lattice v2.5.3 Policy: Use signed log1p to compress noise while preserving 
+    # the hierarchy of magnitudes (essential for distinguishing levels of malignancy).
+    kinetics_raw = torch.sign(ratio) * torch.log1p(torch.abs(ratio))
     
-    # --- 4. Reflexive Padding to reach exactly [size, size, size] ---
-    pad_z = size - sz
-    pad_y = size - sy
-    pad_x = size - sx
-    
+    # 4.2 HETEROGENEITY (Variance with Denoising)
+    t_denoised_real = apply_denoising(t_post_iso, sigma=config.VAR_DENOISING_SIGMA)
+    k = int(getattr(config, "C2_LOCAL_VAR_KERNEL", 3))
+    p = k // 2
+    mean_r = F.avg_pool3d(t_denoised_real, kernel_size=k, stride=1, padding=p)
+    mean_sq_r = F.avg_pool3d(t_denoised_real**2, kernel_size=k, stride=1, padding=p)
+    # Apply log1p to compress the dynamic range of variance (Texture normalization)
+    c2_raw = torch.log1p(torch.relu(mean_sq_r - (mean_r**2)))
+
+    # --- 5. Padding Logic (The Kaleidoscope Fix + Semantic Consistency) ---
+    pad_z, pad_y, pad_x = size - sz, size - sy, size - sx
     padding = (
         pad_x // 2, pad_x - (pad_x // 2),
         pad_y // 2, pad_y - (pad_y // 2),
         pad_z // 2, pad_z - (pad_z // 2)
     )
-    # Safety: reflect mode requires padding < tensor dimension.
-    # Fall back to constant (zeros) for very small ROIs where this would fail.
+    
     can_reflect = (
-        padding[0] < t_pre.shape[4] and padding[1] < t_pre.shape[4] and
-        padding[2] < t_pre.shape[3] and padding[3] < t_pre.shape[3] and
-        padding[4] < t_pre.shape[2] and padding[5] < t_pre.shape[2]
+        padding[0] < t_post_iso.shape[4] and padding[1] < t_post_iso.shape[4] and
+        padding[2] < t_post_iso.shape[3] and padding[3] < t_post_iso.shape[3] and
+        padding[4] < t_post_iso.shape[2] and padding[5] < t_post_iso.shape[2]
     )
-    pad_mode = 'reflect' if can_reflect else 'constant'
-    t_pre_final = F.pad(t_pre, padding, mode=pad_mode)
-    t_post_final = F.pad(t_post, padding, mode=pad_mode)
+
+    # v2.5.2 Policy: Functional channels (C2, C3) MUST use constant padding.
+    # C1 and C4 (Anatomy/Peaks) follow the Kaleidoscope safety policy.
+    roi_fraction = (sz * sy * sx) / (size ** 3)
+    struct_pad_mode = 'reflect' if (can_reflect and roi_fraction >= config.ROI_MIN_FRAC_FOR_REFLECT) else 'constant'
+
+    # Apply padding
+    t_post_final = F.pad(t_post_iso, padding, mode=struct_pad_mode)
+    kinetics_final = F.pad(kinetics_raw, padding, mode='constant', value=0.0)
+    c2_final = F.pad(c2_raw, padding, mode='constant', value=0.0)
+
         
-    # CHANNEL 1: HYBRID STRUCTURE (Mixed Max for peaks + Avg for mass)
-    # Applied on the padded isotropic volume
-    c1_max = F.adaptive_max_pool3d(t_post_final, output_size=(size, size, size))
-    c1_avg = F.adaptive_avg_pool3d(t_post_final, output_size=(size, size, size))
-    alpha = config.HYBRID_STRUCTURAL_RATIO
-    c1 = alpha * c1_max + (1 - alpha) * c1_avg
+    # --- 6. Channel Assembly (Final Adaptive Pooling) ---
+    c1 = F.adaptive_avg_pool3d(t_post_final, output_size=(size, size, size))
+    c2 = F.adaptive_avg_pool3d(c2_final, output_size=(size, size, size))
+    c3 = F.adaptive_avg_pool3d(kinetics_final, output_size=(size, size, size))
     
-    # CHANNEL 2: HETEROGENEITY with Denoising Pre-processing
-    # CRITICAL: Compute variance on real tissue (t_post, BEFORE padding) to avoid
-    # creating artificial texture symmetry from the reflect padding pattern.
-    t_denoised_real = apply_denoising(t_post, sigma=config.VAR_DENOISING_SIGMA)
-    k = int(getattr(config, "C2_LOCAL_VAR_KERNEL", 3))
-    if k < 1:
-        k = 1
-    if k % 2 == 0:
-        k += 1
-    p = k // 2
-    mean_r = F.avg_pool3d(t_denoised_real, kernel_size=k, stride=1, padding=p)
-    mean_sq_r = F.avg_pool3d(t_denoised_real**2, kernel_size=k, stride=1, padding=p)
-    c2_raw = torch.relu(mean_sq_r - (mean_r**2))
-    # Now pad the variance map to reach [size, size, size] — use constant 0 (no variance at boundary)
-    c2 = F.pad(c2_raw, padding, mode='constant', value=0.0)
-    c2 = F.adaptive_avg_pool3d(c2, output_size=(size, size, size))
+    # Bio-Lattice v2.6.3 Orthogonality: Substract C1 (Avg) from MaxPool.
+    # This isolates ONLY the Peak signals (vascular highlights) from the anatomical mass.
+    # Added ReLU guard to ensure no floating-point noise produces negative values.
+    c4_max = F.adaptive_max_pool3d(t_post_final, output_size=(size, size, size))
+    c4 = torch.relu(c4_max - c1)
     
-    # CHANNEL 3: CONTRAST KINETICS (Exact spatial wash-in)
-    c3 = F.adaptive_avg_pool3d(t_post_final - t_pre_final, output_size=(size, size, size))
-    
-    return torch.cat([c1, c2, c3], dim=1).squeeze(0)  # [3, S, S, S], S = config.MICRO_CUBE_SIZE
+    return torch.cat([c1, c2, c3, c4], dim=1).squeeze(0)  # [4, S, S, S]
 
 def process_dataset():
     df_boxes = pd.read_excel(config.PATH_ANNOTATION_BOXES)
@@ -345,9 +351,9 @@ def process_dataset():
         
         # Heuristic matching
         for s in series_found:
-            if not path_pre and helper.series_is_pre_contrast(s['desc']):
+            if helper.series_is_pre_contrast(s['desc']):
                 path_pre = s['path']
-            if not path_post and helper.series_is_post_contrast(s['desc']):
+            if helper.series_is_post_contrast(s['desc']):
                 path_post = s['path']
         
         # Fallback: if names are ambiguous (all 'ax dyn'), use order

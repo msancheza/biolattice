@@ -80,41 +80,55 @@ def visualize_expert_analysis(patient_id):
     # The absolute max voxel can be a peripheral outlier; the mean captures the dominant focus region.
     z_slice = int(np.argmax(np.mean(cam, axis=(1, 2))))
     
-    # Large 2x2 grid with dark background
-    fig, axes = plt.subplots(2, 2, figsize=(10, 10), facecolor=_STYLE["fig_bg"])
-    plt.subplots_adjust(top=0.92, bottom=0.08, left=0.08, right=0.92, hspace=0.3, wspace=0.2)
+    # Large 2x3 grid with dark background
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10), facecolor=_STYLE["fig_bg"])
+    plt.subplots_adjust(top=0.92, bottom=0.08, left=0.05, right=0.95, hspace=0.3, wspace=0.2)
     
     axes = axes.flatten()
     
-    # 1. Anatomy (PROTAGONIST)
+    # 1. ANATOMY (Raw Input Reference)
     axes[0].imshow(cube[0, z_slice], cmap='gray')
-    axes[0].set_title(f"ANATOMY (Z={z_slice})", fontsize=12, fontweight=700, color=_STYLE["title"])
+    axes[0].set_title(f"1. ANATOMY (Z={z_slice})", fontsize=11, fontweight=700, color=_STYLE["title"])
     axes[0].axis('off')
     
-    # 2. AI ATTENTION (PROTAGONIST)
+    # 2. AI ATTENTION (Heatmap)
     axes[1].imshow(cube[0, z_slice], cmap='gray')
     axes[1].imshow(cam[z_slice], cmap='jet', alpha=0.65)
-    axes[1].set_title("AI ATTENTION FOCUS", fontsize=12, fontweight=800, color=_STYLE["accent"])
+    axes[1].set_title("2. AI ATTENTION FOCUS", fontsize=11, fontweight=800, color=_STYLE["accent"])
     axes[1].axis('off')
 
-    # 3. HETEROGENEITY (C2)
-    c2_slice = cube[1, z_slice]
-    vmax_c2 = np.percentile(c2_slice, 99)
-    if vmax_c2 <= c2_slice.min(): vmax_c2 = c2_slice.max() + 1e-9
-    axes[2].imshow(c2_slice, cmap='magma', vmax=vmax_c2)
-    axes[2].set_title("C2: HETEROGENEITY", fontsize=10, color=_STYLE["subtitle"])
+    # 3. C4: SIGNAL PEAKS (Max)
+    c4_slice = cube[3, z_slice]
+    vmax_c4 = np.percentile(c4_slice, 99) if c4_slice.max() > 0 else 1.0
+    axes[2].imshow(c4_slice, cmap='hot', vmax=vmax_c4)
+    axes[2].set_title("3. SIGNAL PEAKS (MAX)", fontsize=10, color=_STYLE["subtitle"])
     axes[2].axis('off')
 
-    # 4. KINETICS (C3)
-    c3_slice = cube[2, z_slice]
-    vmax_c3 = np.percentile(c3_slice, 99)
-    if vmax_c3 <= c3_slice.min(): vmax_c3 = c3_slice.max() + 1e-9
-    axes[3].imshow(c3_slice, cmap='cividis', vmax=vmax_c3)
-    axes[3].set_title("C3: KINETICS", fontsize=10, color=_STYLE["subtitle"])
+    # 4. C1: MORPHOLOGY (Avg)
+    axes[3].imshow(cube[0, z_slice], cmap='bone')
+    axes[3].set_title("4. MORPHOLOGY (AVG)", fontsize=10, color=_STYLE["subtitle"])
     axes[3].axis('off')
+
+    # 5. C2: HETEROGENEITY (Variance)
+    c2_slice = cube[1, z_slice]
+    c2_active = c2_slice[c2_slice > 0.01]
+    vmax_c2 = np.percentile(c2_active, 98) if len(c2_active) > 10 else (c2_slice.max() + 1e-9)
+    axes[4].imshow(c2_slice, cmap='magma', vmax=vmax_c2)
+    title_c2 = "5. HETEROGENEITY" if vmax_c2 > 50 else "5. HETEROGENEITY (Low Signal)"
+    axes[4].set_title(title_c2, fontsize=10, color=_STYLE["subtitle"])
+    axes[4].axis('off')
+
+    # 6. C3: KINETICS (Ratio)
+    c3_slice = cube[2, z_slice]
+    c3_active = c3_slice[np.abs(c3_slice) > 0.01] 
+    vmax_c3 = np.percentile(np.abs(c3_active), 98) if len(c3_active) > 10 else (c3_slice.max() + 1e-9)
+    axes[5].imshow(c3_slice, cmap='cividis', vmin=-vmax_c3, vmax=vmax_c3)
+    title_c3 = "6. KINETICS (RATIO)" if vmax_c3 > 1 else "6. KINETICS (Low Signal)"
+    axes[5].set_title(title_c3, fontsize=10, color=_STYLE["subtitle"])
+    axes[5].axis('off')
     
-    fig.suptitle(f"Bio-Lattice Expert Console · {patient_id}", 
-                 fontsize=14, fontweight=700, color=_STYLE["title"])
+    fig.suptitle(f"Bio-Lattice Expert Console v2.5 · {patient_id}", 
+                 fontsize=16, fontweight=700, color=_STYLE["title"])
     
     return fig
 
