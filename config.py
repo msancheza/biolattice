@@ -32,7 +32,7 @@ LATTICE_FILE_SUFFIX = "_lattice.pt"
 # 3. DICOM & series pairing (Duke-oriented heuristics)
 # =============================================================================
 DICOM_EXTENSION = ".dcm"
-POST_SERIES_SUBSTRINGS = ("1st", "post_1", "ph1", "phase 1", "fase 1")
+POST_SERIES_SUBSTRINGS = ("1st", "post_1", "ph1", "phase 1", "fase 1", "post", "+c", "enhanced", "gad")
 
 # =============================================================================
 # 4. Clinical spreadsheet & supervised label (Excel)
@@ -63,7 +63,9 @@ VAR_DENOISING_SIGMA = 0.5  # Gaussian kernel sigma for Channel 2
 C2_LOCAL_VAR_KERNEL = 3
 # --- Bio-Lattice v2.5 Extraction Policy ---
 EXTRACTION_KINETICS_MODE = "ratio"  # "diff" or "ratio"
+EXTRACTION_KINETICS_CLAMP = 5.0    # Protects from spikes/noise (Log scale)
 ROI_MIN_FRAC_FOR_REFLECT = 0.4     # Min ratio of ROI vs Cube to allow 'reflect' padding
+EXTRACTION_MAX_RELATIVE_SHIFT = 0.05 # Threshold to switch from 'nearest' to 'constant' shift
 AUDIT_WRITE_JSONL = True
 
 # =============================================================================

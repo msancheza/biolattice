@@ -65,13 +65,13 @@ def predict_patient(p_id):
         p_positive = torch.sigmoid(raw_logit).item()
         risk_percent = p_positive * 100
 
-        print(f"\n--- 4D Oncological Evaluation (Risk Profiling): {p_id} ---")
-        print(f"   (Aggressiveness threshold: ≥ {INFERENCE_PROB_THRESHOLD * 100:.0f}%)")
+        print(f"\n--- Model Evaluation: {p_id} ---")
+        print(f"   (Threshold: ≥ {INFERENCE_PROB_THRESHOLD * 100:.0f}%)")
 
         if p_positive >= INFERENCE_PROB_THRESHOLD:
-            print(f"=> AI DIAGNOSIS: HIGH RISK (NON-LUMINAL A PHENOTYPE)")
+            print(f"=> Prediction: High Risk Phenotype")
         else:
-            print(f"=> AI DIAGNOSIS: LOWER RISK (LUMINAL A PHENOTYPE)")
+            print(f"=> Prediction: Lower Risk Phenotype")
 
         print(f"-- Risk Index: {risk_percent:.2f}%")
         print(f"----------------------------------------------------------------")
@@ -219,6 +219,7 @@ def evaluate_dataset():
             confusion=result["confusion"],
             configured_threshold=result["configured_threshold"],
             best_threshold_youden=result["best_threshold_youden"],
+            roc_curve=result.get("roc_curve"),
         )
         print(f"Metrics log saved to: {metrics_log.path}")
     except Exception as exc:

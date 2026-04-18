@@ -207,7 +207,7 @@ def train_model():
     """High-level orchestration for training."""
     allowed_ids, excluded_ids = helper.load_allowed_patient_ids_from_audits()
     device = helper.get_device()
-    print(f"Hardware accelerator: {device}")
+    print(f"Computing device: {device}")
 
     # 1. Dataset & Split
     dataset_train = helper.BioLatticeDataset(config.PATH_CLINICAL, config.PATH_MICRO_CUBES, augment=True, allowed_patient_ids=allowed_ids)
@@ -339,7 +339,7 @@ def train_model():
                     run_log.append_note(msg)
                 early_stopped = True
                 break
-        print("3D-ResNet training finished; best weights saved when validation improved.", flush=True)
+        print("Model training completed.", flush=True)
     except Exception as e:
         loop_error = str(e)
         print(f"Training failed: {e}", flush=True)
