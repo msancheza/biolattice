@@ -14,11 +14,14 @@ Bio-Lattice is a **Data Representation Framework** for 4D Medical Imaging.
 
 ## Core Concept: The Micro-Cube
 
-Rather than feeding raw slices into a network, Bio-Lattice constructs an explicit `[3, 64, 64, 64]` representation tensor featuring:
-1.  **C1 (Anatomy):** Post-contrast structural topology.
-2.  **C2 (Heterogeneity):** Local intensity variance.
-3.  **C3 (Kinetics):** Contrast wash-in dynamics, computed via sub-voxel rigid registration (FFT) between pre- and post-contrast phases.
-4.  **Embedded Physical Metadata:** Key acquisition parameters (`PixelSpacing`, `SliceThickness`) attached to each tensor object.
+Rather than feeding raw slices into a network, Bio-Lattice constructs an explicit `[4, 64, 64, 64]` representation tensor featuring:
+
+1.  **C1 (Anatomy/Avg):** Mean structural intensities capturing global morphology.
+2.  **C2 (Texture/Heterogeneity):** Local intensity variance (Log1p-compressed) for intra-tumoral heterogeneity.
+3.  **C3 (Kinetics):** Contrast wash-in dynamics, computed via **Signed Log-Compression** of the Percent Enhancement Ratio. This stabilizes outliers while preserving the hierarchy of biological aggression. 
+4.  **C4 (Vascular Peaks):** Orthogonalized enhancement picos (`Max - Avg`) with a ReLU guard, isolating high-intensity vascular hotspots from the anatomical background.
+
+**Metadata Integration:** Key physical parameters (`PixelSpacing`, `SliceThickness`) are normalized via Z-score scaling and processed through a dedicated MLP, ensuring the model remains scale-invariant.
 
 ## What's in this repository
 
@@ -34,9 +37,9 @@ Bio-Lattice is composed of three interconnected modules that govern data from ra
 ### 1. Data Representation & Quality Assurance
 The core engine processes and standardizes raw DICOM sets. Because clinical data is inherently noisy, this stage incorporates a strict **Quality Assurance (QA) Gate**:
 *   **Biological Targeting:** Chronologically isolates exact pre-contrast and peak-enhancement sequences to avoid kinetic dilution.
-*   **Geometrical Integrity:** Corrects MRI slope/intercept distortions and detects spatial Z-gap discontinuities.
-*   **Mathematical Alignment:** Performs sub-voxel FFT registration to correct for respiratory motion between phases.
-*   **Audit Segregation:** Cases with irrecoverable motion or missing temporal phases are actively segregated (`REVIEW`) to prevent dataset pollution.
+*   **Mathematical Alignment:** Performs sub-voxel FFT registration using **first-order linear interpolation** to eliminate ringing artifacts and ensure intensity integrity.
+*   **Semantic Safety (Padding):** Implements a conditional padding policy (**Kaleidoscope Fix**); tiny ROIs use constant zero-padding while larger volumes utilize reflexive padding, eliminating symmetry-based symmetry artifacts.
+*   **Audit Segregation:** Cases with irrecoverable motion or missing temporal phases are actively segregated (`REVIEW`) via a structured `JSONL` audit trail.
 
 ### 2. Validation Sandbox
 To evaluate the predictive performance of the extracted Micro-Cubes, the framework consumes the curated dataset and performs supervised learning using a specified ground truth. It dynamically handles class balancing, computes Focal Loss, and enforces Early Stopping, ensuring a robust baseline evaluation

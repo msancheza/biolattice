@@ -44,17 +44,13 @@ def series_is_post_contrast(desc_lower: str) -> bool:
 def normalize_metadata(spacing, thickness):
     """
     Build the 3-vector fed to the metadata MLP from DICOM spacing and thickness.
-
-    Uses ``config.META_NORM_SHIFT_XY`` and ``config.META_NORM_SHIFT_Z`` so train and
-    inference stay aligned; tune those constants in ``config`` only.
+    Uses Z-score scaling based on Duke dataset approximate populations.
     """
-    import torch
-
     tensor = torch.tensor(
         [
-            spacing[0] + config.META_NORM_SHIFT_XY,
-            spacing[1] + config.META_NORM_SHIFT_XY,
-            thickness + config.META_NORM_SHIFT_Z,
+            (spacing[0] - 0.75) / 0.2, # X-pixel spacing scaling
+            (spacing[1] - 0.75) / 0.2, # Y-pixel spacing scaling
+            (thickness - 3.0) / 1.0,   # Z-slice thickness scaling
         ],
         dtype=torch.float32,
     )
@@ -182,12 +178,15 @@ class BioLatticeDataset(Dataset):
                 noise = torch.randn_like(cube) * 0.02
                 cube = cube + noise
 
-        std = torch.std(cube)
-        cube = (
-            (cube - torch.mean(cube)) / (std + config.NORMALIZE_EPS)
-            if std > 0
-            else cube
-        )
+        # Bio-Lattice v2.6 Fix: Per-channel Z-score normalization.
+        # This prevents high-magnitude anatomical channels (C1, C4) from 
+        # mathematically "drowning out" functional kinetics/texture (C2, C3).
+        for c in range(cube.shape[0]):
+            ch = cube[c]
+            std = torch.std(ch)
+            if std > config.NORMALIZE_EPS:
+                cube[c] = (ch - torch.mean(ch)) / std
+        
         return cube, meta_tensor, torch.tensor([label], dtype=torch.float32)
 
 

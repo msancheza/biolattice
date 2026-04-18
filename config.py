@@ -56,10 +56,14 @@ PRE_POST_INTERPOLATE_MODE = "trilinear"
 # 6. Registration, hybrid lattice (v2), and extraction audit
 # =============================================================================
 REGISTRATION_MIN_CORRELATION = 0.80  # Reduced threshold to mitigate safe warnings
-HYBRID_STRUCTURAL_RATIO = 0.5  # Mix of MaxPool and AvgPool for Channel 1
+# DEPRECATED v2.5: Replaced by 4-channel split (C1=Avg, C4=Max).
+# HYBRID_STRUCTURAL_RATIO = 0.5 
 VAR_DENOISING_SIGMA = 0.5  # Gaussian kernel sigma for Channel 2
 # Local neighborhood for heterogeneity variance (Channel 2). Must be odd.
 C2_LOCAL_VAR_KERNEL = 3
+# --- Bio-Lattice v2.5 Extraction Policy ---
+EXTRACTION_KINETICS_MODE = "ratio"  # "diff" or "ratio"
+ROI_MIN_FRAC_FOR_REFLECT = 0.4     # Min ratio of ROI vs Cube to allow 'reflect' padding
 AUDIT_WRITE_JSONL = True
 
 # =============================================================================
@@ -70,12 +74,12 @@ TRAIN_ALLOWED_AUDIT_STATUSES = ("OK", "WARNING")
 # Per-run training summary (.txt): host, timestamps, sample counts, optional early-stop stats.
 TRAIN_LOG_WRITE_TXT = True
 
-BATCH_SIZE = 8
+BATCH_SIZE = 16
 LEARNING_RATE = 5e-5
 EPOCHS = 100
 TRAIN_VAL_SPLIT_FRACTION = 0.8
 RANDOM_SEED = 42
-EARLY_STOPPING_PATIENCE = 15
+EARLY_STOPPING_PATIENCE = 25
 EARLY_STOPPING_MIN_DELTA = 5e-4
 EARLY_STOPPING_START_EPOCH = 10
 FOCAL_LOSS_ALPHA = 0.75
@@ -85,13 +89,13 @@ TRAIN_STRATIFIED_SPLIT = True  # patient-level train/val preserving ~label ratio
 TRAIN_USE_WEIGHTED_SAMPLER = False  # oversample minority class each epoch (DataLoader sampler)
 TRAIN_USE_CLASS_POS_WEIGHT = True  # BCE pos_weight = n_neg / n_pos inside FocalLoss
 ADAMW_WEIGHT_DECAY = 1e-2
-ONECYCLE_MAX_LR = 2.5e-4
+ONECYCLE_MAX_LR = 1.5e-4
 NORMALIZE_EPS = 1e-8
 
 # =============================================================================
 # 8. Model architecture (BioLattice3DResNet)
 # =============================================================================
-INPUT_CHANNELS = 3
+INPUT_CHANNELS = 4  # v2.5 Split Engine: C1=Avg, C2=Het, C3=Kin, C4=Max
 STEM_CHANNELS = 32
 RES_BLOCK1_IN = 32
 RES_BLOCK1_OUT = 64
