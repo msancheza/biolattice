@@ -364,7 +364,7 @@ def process_dataset():
 
         # Sort series by Number to maintain chronological order
         series_found.sort(key=lambda x: x['num'])
-        
+        print("the series found are: ", series_found, " for: ", p_id)
         # Heuristic matching
         for s in series_found:
             if helper.series_is_pre_contrast(s['desc']):

@@ -6,7 +6,9 @@
 
 ## Bio-Lattice: A proposed representation for 4D-MRI
 
-Bio-Lattice is presented as a research prototype focused on transforming magnetic resonance sequences (DCE-MRI) into compact data structures. The approach is based on the generation of a **Micro-Cube**: a $64^3$ tensor that captures spatial and temporal information within a unified structure.
+Bio-Lattice is a research prototype for transforming 4D DCE-MRI sequences into compact tensor representations (**Micro-Cubes**), designed to provide a consistent input structure for downstream models. 
+
+Each Micro-Cube is a $64^3$ tensor that captures spatial and temporal information within a unified structure.
 
 ### Design components
 The system implements a four-layer extraction of technical information over the Region of Interest (ROI):
@@ -17,7 +19,9 @@ The system implements a four-layer extraction of technical information over the 
 4.  **Vascular Highlights:** Isolation of peak enhancement signals against the structural average.
 
 ### Workflow application
-The tool facilitates the use of 4D data in conventional Deep Learning models by reducing data volume from gigabytes to megabytes without omitting critical clinical dimensions. The project uses this method to explore the correlation between imaging features and molecular subtypes in oncological research environments.
+The tool enables the use of 4D data in standard deep learning models by reducing data volume from gigabytes to megabytes through structured tensor representation, while preserving spatiotemporal structure.
+
+The project uses this method to explore relationships between imaging features and molecular subtypes in oncological datasets.
 
 ## Repository Contents
 
@@ -49,6 +53,10 @@ The current implementation utilizes the Duke Breast MRI dataset with the followi
 
 *   **Task Definition:** The validation objective is to evaluate the correlation between extracted imaging features and reported molecular subtypes.
 *   **Methodological Role:** The Micro-Cube serves as a standardized input for downstream classification tasks, comparing image-derived patterns against known biological markers.
+
+## Preliminary Results
+
+Preliminary benchmarking using a 3D-ResNet architecture demonstrates that Micro-Cube representations retain significant predictive signal, achieving an **ROC-AUC of 0.7447** on the Duke Breast MRI cohort. The model exhibits a higher sensitivity (0.81) relative to its specificity (0.50), indicating a classification bias towards recall in this experimental configuration.
 
 ## Training Configuration & Benchmarking
 
