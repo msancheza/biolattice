@@ -30,7 +30,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
 def run_script(script_name):
     try:
-        result = subprocess.run(["python", script_name], cwd=BASE_DIR, capture_output=True, text=True)
+        result = subprocess.run([sys.executable, script_name], cwd=BASE_DIR, capture_output=True, text=True)
         return result.stdout, result.stderr
     except Exception as e:
         return "", str(e)
@@ -91,21 +91,44 @@ with tab3:
         """Parses a Bio-Lattice metrics log file into a dict."""
         import ast
         data = {"roc_curve": {"fpr": [], "tpr": []}, "confusion": {}}
+        current_section = ""
         try:
             with open(filepath, "r") as f:
                 lines = f.readlines()
                 for line in lines:
-                    if "roc_auc:" in line: data["auc"] = float(line.split(":")[1].strip())
-                    if "accuracy:" in line and "best" not in line.lower(): data["accuracy"] = float(line.split(":")[1].strip())
-                    if "sensitivity:" in line and "best" not in line.lower(): data["sensitivity"] = float(line.split(":")[1].strip())
-                    if "specificity:" in line and "best" not in line.lower(): data["specificity"] = float(line.split(":")[1].strip())
-                    if "configured_threshold:" in line: data["configured_threshold"] = float(line.split(":")[1].strip())
-                    if "tn:" in line: data["confusion"]["tn"] = int(line.split(":")[1].strip())
-                    if "fp:" in line: data["confusion"]["fp"] = int(line.split(":")[1].strip())
-                    if "fn:" in line: data["confusion"]["fn"] = int(line.split(":")[1].strip())
-                    if "tp:" in line: data["confusion"]["tp"] = int(line.split(":")[1].strip())
-                    if "fpr:" in line: data["roc_curve"]["fpr"] = ast.literal_eval(line.split("fpr:")[1].strip())
-                    if "tpr:" in line: data["roc_curve"]["tpr"] = ast.literal_eval(line.split("tpr:")[1].strip())
+                    stripped = line.strip()
+                    if stripped.startswith("--- ") and stripped.endswith(" ---"):
+                        current_section = stripped
+                        continue
+
+                    if "roc_auc:" in line:
+                        data["auc"] = float(line.split(":", 1)[1].strip())
+                    elif "configured_threshold:" in line:
+                        data["configured_threshold"] = float(line.split(":", 1)[1].strip())
+                    elif stripped.startswith("best_accuracy:"):
+                        data["best_accuracy"] = float(line.split(":", 1)[1].strip())
+                    elif stripped.startswith("best_sensitivity:"):
+                        data["best_sensitivity"] = float(line.split(":", 1)[1].strip())
+                    elif stripped.startswith("best_specificity:"):
+                        data["best_specificity"] = float(line.split(":", 1)[1].strip())
+                    elif current_section == "--- Metrics at configured threshold ---" and stripped.startswith("accuracy:"):
+                        data["accuracy"] = float(line.split(":", 1)[1].strip())
+                    elif current_section == "--- Metrics at configured threshold ---" and stripped.startswith("sensitivity:"):
+                        data["sensitivity"] = float(line.split(":", 1)[1].strip())
+                    elif current_section == "--- Metrics at configured threshold ---" and stripped.startswith("specificity:"):
+                        data["specificity"] = float(line.split(":", 1)[1].strip())
+                    elif "tn:" in line:
+                        data["confusion"]["tn"] = int(line.split(":", 1)[1].strip())
+                    elif "fp:" in line:
+                        data["confusion"]["fp"] = int(line.split(":", 1)[1].strip())
+                    elif "fn:" in line:
+                        data["confusion"]["fn"] = int(line.split(":", 1)[1].strip())
+                    elif "tp:" in line:
+                        data["confusion"]["tp"] = int(line.split(":", 1)[1].strip())
+                    elif "fpr:" in line:
+                        data["roc_curve"]["fpr"] = ast.literal_eval(line.split("fpr:", 1)[1].strip())
+                    elif "tpr:" in line:
+                        data["roc_curve"]["tpr"] = ast.literal_eval(line.split("tpr:", 1)[1].strip())
             
             # Calculate F1-Score (Rigor)
             tp, fp, fn = data["confusion"].get("tp", 0), data["confusion"].get("fp", 0), data["confusion"].get("fn", 0)

@@ -33,6 +33,15 @@ LATTICE_FILE_SUFFIX = "_lattice.pt"
 # =============================================================================
 DICOM_EXTENSION = ".dcm"
 POST_SERIES_SUBSTRINGS = ("1st", "post_1", "ph1", "phase 1", "fase 1", "post", "+c", "enhanced", "gad")
+SEMANTIC_PRE_KEYWORDS = ("pre", "precontrast", "pre-contrast", "without contrast", "non fs", "nonfat", "baseline")
+SEMANTIC_POST_KEYWORDS = ("post", "postcontrast", "post-contrast", "enhanced", "+c", "gad", "contrast", "fase 1", "post_1")
+SEMANTIC_DYNAMIC_KEYWORDS = ("dyn", "dynamic", "vibrant", "ph", "phase", "pass", "serie")
+SEMANTIC_T1_KEYWORDS = ("t1", "fl2d", "3d", "vibrant", "thrive", "lava", "flash")
+SEMANTIC_FATSAT_KEYWORDS = ("fs", "fat sat", "fatsat", "spair", "stir")
+SEMANTIC_LOCALIZER_KEYWORDS = ("scout", "localizer", "survey", "locator")
+SEMANTIC_DIFFUSION_KEYWORDS = ("dwi", "adc", "diff", "diffusion", "trace")
+SEMANTIC_T2_KEYWORDS = ("t2", "stir", "tse", "haste")
+SEMANTIC_SELECTION_MIN_SCORE = 2.0
 
 # =============================================================================
 # 4. Clinical spreadsheet & supervised label (Excel)
@@ -55,14 +64,13 @@ PRE_POST_INTERPOLATE_MODE = "trilinear"
 # =============================================================================
 # 6. Registration, hybrid lattice (v2), and extraction audit
 # =============================================================================
-REGISTRATION_MIN_CORRELATION = 0.80  # Reduced threshold to mitigate safe warnings
+REGISTRATION_MIN_CORRELATION = 0.70  # Threshold balanced for Breast MRI FFT (keeps usable cases like 0.73)
 # DEPRECATED v2.5: Replaced by 4-channel split (C1=Avg, C4=Max).
 # HYBRID_STRUCTURAL_RATIO = 0.5 
-VAR_DENOISING_SIGMA = 0.5  # Gaussian kernel sigma for Channel 2
 # Local neighborhood for heterogeneity variance (Channel 2). Must be odd.
 C2_LOCAL_VAR_KERNEL = 3
+C4_LOCAL_PEAK_KERNEL = 3
 # --- Bio-Lattice v2.5 Extraction Policy ---
-EXTRACTION_KINETICS_MODE = "ratio"  # "diff" or "ratio"
 EXTRACTION_KINETICS_CLAMP = 5.0    # Protects from spikes/noise (Log scale)
 ROI_MIN_FRAC_FOR_REFLECT = 0.4     # Min ratio of ROI vs Cube to allow 'reflect' padding
 EXTRACTION_MAX_RELATIVE_SHIFT = 0.05 # Threshold to switch from 'nearest' to 'constant' shift
@@ -81,15 +89,17 @@ LEARNING_RATE = 5e-5
 EPOCHS = 100
 TRAIN_VAL_SPLIT_FRACTION = 0.8
 RANDOM_SEED = 42
-EARLY_STOPPING_PATIENCE = 25
-EARLY_STOPPING_MIN_DELTA = 5e-4
-EARLY_STOPPING_START_EPOCH = 10
+# (High Resilience Training) - Give model more time with new v2.5 Micro-cubes
+EARLY_STOPPING_PATIENCE = 50
+EARLY_STOPPING_MIN_DELTA = 0.0005
+EARLY_STOPPING_START_EPOCH = 20
 FOCAL_LOSS_ALPHA = 0.75
 FOCAL_LOSS_GAMMA = 2.0
 # Class imbalance (training only; same micro-cubes and labels). Prefer one strategy at a time.
 TRAIN_STRATIFIED_SPLIT = True  # patient-level train/val preserving ~label ratio per side
 TRAIN_USE_WEIGHTED_SAMPLER = False  # oversample minority class each epoch (DataLoader sampler)
 TRAIN_USE_CLASS_POS_WEIGHT = True  # BCE pos_weight = n_neg / n_pos inside FocalLoss
+TRAIN_NUM_WORKERS = 4              # Parallel data loading workers (Efficiency / Green AI)
 ADAMW_WEIGHT_DECAY = 1e-2
 ONECYCLE_MAX_LR = 1.5e-4
 NORMALIZE_EPS = 1e-8
@@ -117,7 +127,7 @@ POOL_STRIDE = 2
 # =============================================================================
 # Default operating point for current model stage.
 # Recalibrate after each training cycle using validation threshold sweep (Youden report).
-MALIGNANCY_PROB_THRESHOLD = 0.55
+MALIGNANCY_PROB_THRESHOLD = 0.50
 # 'auto' resolves to CUDA > MPS > CPU at runtime via helper.get_device().
 # Force a specific device by setting this to 'cpu', 'cuda', or 'mps'.
 INFERENCE_DEVICE = "auto"

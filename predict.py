@@ -1,21 +1,21 @@
 import os
-import numpy as np
-import torch
-
 # Mandatory patch for Mac (Apple Silicon): allows ops like AvgPool3d to fall back to CPU
 # when not yet implemented on MPS (mirrors the same flag in train.py).
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+
+import numpy as np
+import torch
 
 from sklearn.metrics import roc_auc_score, accuracy_score, recall_score, confusion_matrix, roc_curve
 from torch.utils.data import DataLoader
 
 import config
 from core import helper
-from core.helper import BioLatticeDataset, build_patient_level_split
-from core.run_logs import RunLogWriter
+from core.helper import BioLatticeDataset
+from core.audit import RunLogWriter
 
 # Probability threshold on sigmoid output (0–1); mirrors `MALIGNANCY_PROB_THRESHOLD` in config.
-INFERENCE_PROB_THRESHOLD = config.MALIGNANCY_PROB_THRESHOLD
+# Updated dynamically inside functions to avoid stale config values.
 
 
 def predict_patient(p_id):
@@ -51,10 +51,7 @@ def predict_patient(p_id):
     
     # 3. Micro-cube Processing & Normalization (Z-Score)
     # Important: Must match helper.BioLatticeDataset logic
-    cube = data_obj['tensor']
-    std = torch.std(cube)
-    if std > 0:
-        cube = (cube - torch.mean(cube)) / (std + config.NORMALIZE_EPS)
+    cube = helper.normalize_cube_per_channel(data_obj['tensor'])
     
     cube = cube.unsqueeze(0).to(device)
     meta_tensor = helper.normalize_metadata(spacing, thickness).unsqueeze(0).to(device)
@@ -66,9 +63,9 @@ def predict_patient(p_id):
         risk_percent = p_positive * 100
 
         print(f"\n--- Model Evaluation: {p_id} ---")
-        print(f"   (Threshold: ≥ {INFERENCE_PROB_THRESHOLD * 100:.0f}%)")
+        print(f"   (Threshold: ≥ {config.MALIGNANCY_PROB_THRESHOLD * 100:.0f}%)")
 
-        if p_positive >= INFERENCE_PROB_THRESHOLD:
+        if p_positive >= config.MALIGNANCY_PROB_THRESHOLD:
             print(f"=> Prediction: High Risk Phenotype")
         else:
             print(f"=> Prediction: Lower Risk Phenotype")
@@ -78,8 +75,8 @@ def predict_patient(p_id):
         
         return {
             "risk_percent": risk_percent,
-            "high_risk": p_positive >= INFERENCE_PROB_THRESHOLD,
-            "threshold_percent": INFERENCE_PROB_THRESHOLD * 100,
+            "high_risk": p_positive >= config.MALIGNANCY_PROB_THRESHOLD,
+            "threshold_percent": config.MALIGNANCY_PROB_THRESHOLD * 100,
         }
 
 def evaluate_dataset():
@@ -107,8 +104,8 @@ def evaluate_dataset():
         allowed_patient_ids=allowed_ids
     )
     split = config.TRAIN_VAL_SPLIT_FRACTION
-    _, val_dataset, _, _ = build_patient_level_split(
-        dataset_val, split, config.RANDOM_SEED
+    _, val_dataset, _, _ = helper.build_train_val_subsets(
+        dataset_val, dataset_val, split, config.RANDOM_SEED
     )
     
     if len(val_dataset) == 0:
@@ -134,7 +131,7 @@ def evaluate_dataset():
             probs_np = probs.cpu().numpy().flatten()
             labels_np = labels.cpu().numpy().flatten()
             
-            preds = (probs_np >= INFERENCE_PROB_THRESHOLD).astype(float)
+            preds = (probs_np >= config.MALIGNANCY_PROB_THRESHOLD).astype(float)
             
             all_probs.extend(probs_np.tolist())
             all_preds.extend(preds.tolist())
@@ -159,7 +156,7 @@ def evaluate_dataset():
     # Sweep thresholds to find an operating point that balances sensitivity/specificity.
     # Criterion: maximize Youden's J = Sensitivity + Specificity - 1.
     best = {
-        "threshold": INFERENCE_PROB_THRESHOLD,
+        "threshold": config.MALIGNANCY_PROB_THRESHOLD,
         "youden_j": -1.0,
         "accuracy": 0.0,
         "sensitivity": 0.0,
@@ -203,7 +200,7 @@ def evaluate_dataset():
         "total": len(val_dataset),
         "confusion": {"tn": int(tn), "fp": int(fp), "fn": int(fn), "tp": int(tp)},
         "roc_curve": roc_points,
-        "configured_threshold": INFERENCE_PROB_THRESHOLD,
+        "configured_threshold": config.MALIGNANCY_PROB_THRESHOLD,
         "best_threshold_youden": best,
     }
 

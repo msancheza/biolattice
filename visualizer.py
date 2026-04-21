@@ -36,9 +36,8 @@ def compute_gradcam(patient_id, device="cpu"):
     
     data_obj = torch.load(lattice_path, map_location=device, weights_only=True)
     raw_cube = data_obj['tensor']
-    # Normalize for model input
-    std = torch.std(raw_cube)
-    norm_cube = (raw_cube - torch.mean(raw_cube)) / (std + config.NORMALIZE_EPS) if std > 0 else raw_cube
+    # Normalize for model input using the same per-channel policy as training/inference.
+    norm_cube = helper.normalize_cube_per_channel(raw_cube)
     model_input = norm_cube.unsqueeze(0).to(device)
     
     meta = data_obj.get('meta', {})
