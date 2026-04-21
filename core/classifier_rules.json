@@ -1,0 +1,97 @@
+{
+  "min_selection_score": 2.0,
+  "dynamic_keywords": ["dyn", "dynamic", "vibrant", "ph", "phase", "pass", "serie"],
+  "base_exclusions": [
+    {
+      "keywords": ["scout", "localizer", "survey", "locator"],
+      "reason": "localizer/scout"
+    },
+    {
+      "keywords": ["non fs", "non-fs", "no fs"],
+      "reason": "explicit non-fatsat",
+      "action": "exclude"
+    },
+    {
+      "keywords": ["dwi", "adc", "diff", "diffusion", "trace"],
+      "reason": "diffusion"
+    },
+    {
+      "keywords": ["t2", "stir", "tse", "haste"],
+      "exclude_if_not": ["t1"],
+      "reason": "non-T1"
+    }
+  ],
+  "base_scoring": [
+    {
+      "keywords": ["t1", "fl2d", "3d", "vibrant", "thrive", "lava", "flash"],
+      "score_type": "both",
+      "value": 1.5,
+      "reason": "t1-like sequence"
+    },
+    {
+      "keywords": ["fs", "fat sat", "fatsat", "spair", "stir"],
+      "score_type": "post",
+      "value": 0.5,
+      "reason": "fat-sat style"
+    },
+    {
+      "keywords": ["pre", "precontrast", "pre-contrast", "without contrast", "non fs", "nonfat", "baseline"],
+      "score_type": "pre",
+      "value": 4.0,
+      "reason": "explicit pre keyword"
+    },
+    {
+      "keywords": ["post", "postcontrast", "post-contrast", "enhanced", "+c", "gad", "contrast", "fase 1", "post_1"],
+      "score_type": "post",
+      "value": 4.0,
+      "reason": "explicit post keyword"
+    },
+    {
+      "keywords": ["dyn", "dynamic", "vibrant", "ph", "phase", "pass", "serie"],
+      "score_type": "pre",
+      "value": 1.5,
+      "reason": "dynamic sequence keyword"
+    },
+    {
+      "keywords": ["dyn", "dynamic", "vibrant", "ph", "phase", "pass", "serie"],
+      "score_type": "post",
+      "value": 2.5,
+      "reason": "dynamic sequence keyword"
+    }
+  ],
+  "vendor_rules": {
+    "ge": {
+      "family": ["vibrant", "lava", "dyn"],
+      "scoring": [
+        {
+          "keywords": ["1st", "phase 1", "ph1"],
+          "score_type": "post",
+          "value": 1.5,
+          "reason": "GE early post phase marker"
+        }
+      ]
+    },
+    "siemens": {
+      "family": ["flash", "twist", "vibe"],
+      "scoring": [
+        {
+          "keywords": ["sub", "post", "phase"],
+          "score_type": "post",
+          "value": 0.75,
+          "reason": "Siemens post marker"
+        }
+      ]
+    },
+    "philips": {
+      "family": ["thrive", "dyn", "phase"],
+      "scoring": [
+        {
+          "keywords": ["post", "ce", "contrast"],
+          "score_type": "post",
+          "value": 0.75,
+          "reason": "Philips post marker"
+        }
+      ]
+    }
+  }
+}

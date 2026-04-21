@@ -6,6 +6,7 @@ classification step with vendor-sensitive rules and interpretable audit output.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass, field
@@ -43,9 +44,21 @@ class SemanticScore:
 class SeriesClassifier:
     """Scores DICOM series metadata and selects PRE/POST candidates."""
 
+    _RULES: dict[str, Any] = {}
     VENDOR_GE = ("ge", "general electric")
     VENDOR_SIEMENS = ("siemens",)
     VENDOR_PHILIPS = ("philips",)
+
+    @classmethod
+    def _load_rules(cls) -> None:
+        if not cls._RULES:
+            rules_path = os.path.join(os.path.dirname(__file__), "classifier_rules.json")
+            try:
+                with open(rules_path, "r") as f:
+                    cls._RULES = json.load(f)
+            except Exception as e:
+                # Fallback or empty rules if file not found
+                cls._RULES = {"min_selection_score": 2.0}
 
     @staticmethod
     def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -131,44 +144,53 @@ class SeriesClassifier:
 
     @classmethod
     def _apply_base_rules(cls, meta: dict[str, Any], text: str, score: SemanticScore) -> None:
-        if cls._contains_any(text, config.SEMANTIC_LOCALIZER_KEYWORDS):
-            score.exclude("localizer/scout")
-        if cls._contains_any(text, config.SEMANTIC_DIFFUSION_KEYWORDS):
-            score.exclude("diffusion")
-        if cls._contains_any(text, config.SEMANTIC_T2_KEYWORDS) and not cls._contains_any(text, config.SEMANTIC_T1_KEYWORDS):
-            score.exclude("non-T1")
+        cls._load_rules()
+        
+        # 1. Apply exclusions from JSON
+        for rule in cls._RULES.get("base_exclusions", []):
+            keywords = tuple(rule["keywords"])
+            if cls._contains_any(text, keywords):
+                # Special case for "exclude_if_not" (e.g. T2 unless T1 also exists)
+                if "exclude_if_not" in rule:
+                    required = tuple(rule["exclude_if_not"])
+                    if not cls._contains_any(text, required):
+                        score.exclude(rule["reason"])
+                else:
+                    score.exclude(rule["reason"])
 
-        if cls._contains_any(text, config.SEMANTIC_T1_KEYWORDS):
-            score.add_both(1.5, "t1-like sequence")
-        if cls._contains_any(text, config.SEMANTIC_FATSAT_KEYWORDS):
-            score.add_post(0.5, "fat-sat style")
+        # 2. Apply scoring from JSON
+        for rule in cls._RULES.get("base_scoring", []):
+            keywords = tuple(rule["keywords"])
+            if cls._contains_any(text, keywords):
+                if rule["score_type"] == "pre":
+                    score.add_pre(rule["value"], rule["reason"])
+                elif rule["score_type"] == "post":
+                    score.add_post(rule["value"], rule["reason"])
+                elif rule["score_type"] == "both":
+                    score.add_both(rule["value"], rule["reason"])
 
-        if cls._contains_any(text, config.SEMANTIC_PRE_KEYWORDS):
-            score.add_pre(4.0, "explicit pre keyword")
-        if cls._contains_any(text, config.SEMANTIC_POST_KEYWORDS):
-            score.add_post(4.0, "explicit post keyword")
-        if cls._contains_any(text, config.SEMANTIC_DYNAMIC_KEYWORDS):
-            score.add_pre(1.5, "dynamic sequence keyword")
-            score.add_post(2.5, "dynamic sequence keyword")
-
-        # Late phase penalty for numbered passes (2nd, 3rd, 4th, etc.)
+        # 3. Hardcoded heuristic: Late phase penalty for numbered passes (2nd, 3rd, 4th, etc.)
         _is_late_pass = bool(re.search(r"[2-9](nd|rd|th)", text))
         _has_pass_word = "pass" in text
         _has_pre_anchor = cls._contains_any(text, ("pre", "1st", "baseline"))
         if (_is_late_pass or _has_pass_word) and not _has_pre_anchor:
             score.exclude("late numbered pass", penalty=4.0)
 
-        # Baseline PRE bias for phase-agnostic dynamic acquisitions
+        # 4. Hardcoded heuristic: Baseline PRE bias for phase-agnostic dynamic acquisitions
         _has_pure_dynamic = cls._contains_any(text, ("dyn", "vibrant"))
         _has_phase_marker = cls._contains_any(text, ("ph", "phase", "fase"))
         if _has_pure_dynamic and not _has_phase_marker:
             score.add_pre(1.0, "pure dynamic without phase marker → pre bias")
 
-        # Resolve PRE/POST ambiguity in absence of numbered phases
-        _has_pre_kw = cls._contains_any(text, config.SEMANTIC_PRE_KEYWORDS)
-        _has_post_kw = cls._contains_any(text, config.SEMANTIC_POST_KEYWORDS)
+        # 5. Conflict guard: Resolve PRE/POST ambiguity in absence of numbered phases
+        _has_pre_kw = any(k in text for rule in cls._RULES.get("base_scoring", []) 
+                         if rule["score_type"] == "pre" for k in rule["keywords"])
+        _has_post_kw = any(k in text for rule in cls._RULES.get("base_scoring", []) 
+                          if rule["score_type"] == "post" for k in rule["keywords"])
+        
         _has_numbered_phase = bool(re.search(r"(ph|phase|dyn|dynamic|fase|pass)\s?[1-9]", text)) \
                            or bool(re.search(r"[1-9](st|nd|rd|th)", text))
+        
         if _has_pre_kw and not _has_post_kw and not _has_numbered_phase:
             score.pre_score += 1.0
             score.evidence.append("pre:+1.0 conflict-guard (pre keyword, no post signal)")
@@ -185,43 +207,38 @@ class SeriesClassifier:
             score.add_post(0.5, "late acquisition")
 
     @classmethod
-    def _apply_ge_rules(cls, text: str, score: SemanticScore) -> None:
-        if any(x in text for x in ("vibrant", "lava", "dyn")):
-            score.add_both(1.0, "GE dynamic family")
-        if "1st" in text or "phase 1" in text or "ph1" in text:
-            score.add_post(1.5, "GE early post phase marker")
-
-    @classmethod
-    def _apply_siemens_rules(cls, text: str, score: SemanticScore) -> None:
-        if any(x in text for x in ("flash", "twist", "vibe")):
-            score.add_both(1.0, "Siemens dynamic family")
-        if any(x in text for x in ("sub", "post", "phase")):
-            score.add_post(0.75, "Siemens post marker")
-
-    @classmethod
-    def _apply_philips_rules(cls, text: str, score: SemanticScore) -> None:
-        if any(x in text for x in ("thrive", "dyn", "phase")):
-            score.add_both(1.0, "Philips dynamic family")
-        if any(x in text for x in ("post", "ce", "contrast")):
-            score.add_post(0.75, "Philips post marker")
-
-    @classmethod
     def _apply_vendor_rules(cls, meta: dict[str, Any], text: str, score: SemanticScore) -> None:
+        cls._load_rules()
         family = meta.get("manufacturer_family", "generic")
-        if family == "ge":
-            cls._apply_ge_rules(text, score)
-        elif family == "siemens":
-            cls._apply_siemens_rules(text, score)
-        elif family == "philips":
-            cls._apply_philips_rules(text, score)
+        vendor_data = cls._RULES.get("vendor_rules", {}).get(family)
+        
+        if not vendor_data:
+            return
+
+        # Apply family keywords
+        if cls._contains_any(text, tuple(vendor_data.get("family", []))):
+            score.add_both(1.0, f"{family.capitalize()} dynamic family")
+
+        # Apply manufacturer-specific phase scoring
+        for rule in vendor_data.get("scoring", []):
+            if cls._contains_any(text, tuple(rule["keywords"])):
+                if rule["score_type"] == "post":
+                    score.add_post(rule["value"], rule["reason"])
+                elif rule["score_type"] == "pre":
+                    score.add_pre(rule["value"], rule["reason"])
+                elif rule["score_type"] == "both":
+                    score.add_both(rule["value"], rule["reason"])
 
     @classmethod
     def _resolve_candidate_type(cls, score: SemanticScore) -> tuple[str, float]:
+        cls._load_rules()
+        min_score = cls._RULES.get("min_selection_score", 2.0)
+        
         candidate_type = "unknown"
         confidence = 0.0
         if (
-            score.pre_score >= config.SEMANTIC_SELECTION_MIN_SCORE
-            or score.post_score >= config.SEMANTIC_SELECTION_MIN_SCORE
+            score.pre_score >= min_score
+            or score.post_score >= min_score
         ):
             if score.post_score > score.pre_score:
                 candidate_type = "post"
@@ -267,8 +284,10 @@ class SeriesClassifier:
 
     @classmethod
     def _dynamic_fallback(cls, ordered: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        cls._load_rules()
+        dyn_kws = tuple(cls._RULES.get("dynamic_keywords", []))
         dynamic_like = [
-            s for s in ordered if cls._contains_any(s.get("semantic_text", ""), config.SEMANTIC_DYNAMIC_KEYWORDS)
+            s for s in ordered if cls._contains_any(s.get("semantic_text", ""), dyn_kws)
         ]
         if len(dynamic_like) >= 2:
             return dynamic_like[0], dynamic_like[1]
@@ -280,9 +299,12 @@ class SeriesClassifier:
         if not series_found:
             return None, None
 
+        cls._load_rules()
+        min_score = cls._RULES.get("min_selection_score", 2.0)
+        
         ordered = sorted(series_found, key=cls.sort_key)
-        pre_candidates = [s for s in ordered if s["pre_score"] >= config.SEMANTIC_SELECTION_MIN_SCORE]
-        post_candidates = [s for s in ordered if s["post_score"] >= config.SEMANTIC_SELECTION_MIN_SCORE]
+        pre_candidates = [s for s in ordered if s["pre_score"] >= min_score]
+        post_candidates = [s for s in ordered if s["post_score"] >= min_score]
 
         pre_candidates.sort(key=lambda s: (-s["pre_score"], cls.sort_key(s)))
         best_pre = pre_candidates[0] if pre_candidates else None

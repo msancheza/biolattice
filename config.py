@@ -32,16 +32,7 @@ LATTICE_FILE_SUFFIX = "_lattice.pt"
 # 3. DICOM & series pairing (Duke-oriented heuristics)
 # =============================================================================
 DICOM_EXTENSION = ".dcm"
-POST_SERIES_SUBSTRINGS = ("1st", "post_1", "ph1", "phase 1", "fase 1", "post", "+c", "enhanced", "gad")
-SEMANTIC_PRE_KEYWORDS = ("pre", "precontrast", "pre-contrast", "without contrast", "non fs", "nonfat", "baseline")
-SEMANTIC_POST_KEYWORDS = ("post", "postcontrast", "post-contrast", "enhanced", "+c", "gad", "contrast", "fase 1", "post_1")
-SEMANTIC_DYNAMIC_KEYWORDS = ("dyn", "dynamic", "vibrant", "ph", "phase", "pass", "serie")
-SEMANTIC_T1_KEYWORDS = ("t1", "fl2d", "3d", "vibrant", "thrive", "lava", "flash")
-SEMANTIC_FATSAT_KEYWORDS = ("fs", "fat sat", "fatsat", "spair", "stir")
-SEMANTIC_LOCALIZER_KEYWORDS = ("scout", "localizer", "survey", "locator")
-SEMANTIC_DIFFUSION_KEYWORDS = ("dwi", "adc", "diff", "diffusion", "trace")
-SEMANTIC_T2_KEYWORDS = ("t2", "stir", "tse", "haste")
-SEMANTIC_SELECTION_MIN_SCORE = 2.0
+# (Note: SEMANTIC_* constants were migrated to core/classifier_rules.json in v2.6)
 
 # =============================================================================
 # 4. Clinical spreadsheet & supervised label (Excel)
