@@ -40,7 +40,7 @@ class SemanticScore:
         self.exclusion_reasons.append(reason)
 
 
-class Clasificador:
+class SeriesClassifier:
     """Scores DICOM series metadata and selects PRE/POST candidates."""
 
     VENDOR_GE = ("ge", "general electric")
