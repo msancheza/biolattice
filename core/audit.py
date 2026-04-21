@@ -3,11 +3,13 @@ Structured text logs for Bio-Lattice.
 
 ``RunLogWriter`` is the unified logger used for:
 - extraction/events append logs (main pipeline),
+- extraction audit JSONL runs,
 - per-run training logs,
 - per-run metrics logs.
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 import platform
@@ -41,10 +43,15 @@ class RunLogWriter:
 
     @classmethod
     def new_run_path(cls, kind: str = "training") -> str:
-        os.makedirs(config.PATH_TRAINING_LOG_DIR, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
-        prefix = "metrics_run" if kind == "metrics" else "training_run"
-        return os.path.join(config.PATH_TRAINING_LOG_DIR, f"{prefix}_{ts}.txt")
+        if kind == "metrics":
+            os.makedirs(config.PATH_TRAINING_LOG_DIR, exist_ok=True)
+            return os.path.join(config.PATH_TRAINING_LOG_DIR, f"metrics_run_{ts}.txt")
+        if kind == "extraction_audit":
+            os.makedirs(config.PATH_EXTRACTION_AUDIT_DIR, exist_ok=True)
+            return os.path.join(config.PATH_EXTRACTION_AUDIT_DIR, f"extraction_audit_{ts}.jsonl")
+        os.makedirs(config.PATH_TRAINING_LOG_DIR, exist_ok=True)
+        return os.path.join(config.PATH_TRAINING_LOG_DIR, f"training_run_{ts}.txt")
 
     @classmethod
     def create_new(cls, kind: str = "training") -> "RunLogWriter":
@@ -56,6 +63,12 @@ class RunLogWriter:
     def event(self, message: str) -> None:
         """Append one line (useful for extraction/event logs)."""
         _write_text(self.path, message, mode="a")
+
+    def append_jsonl(self, record: dict) -> None:
+        """Append one structured JSONL record with an automatic timestamp."""
+        payload = dict(record)
+        payload["timestamp"] = datetime.now().isoformat(timespec="seconds")
+        _write_text(self.path, json.dumps(payload), mode="a")
 
     @staticmethod
     def _host_training_context_lines(device_str: str) -> list[str]:
@@ -142,6 +155,11 @@ class RunLogWriter:
         )
         self.write("\n".join(lines), mode="w")
 
+    def write_setup_stats(self, duration_sec: float) -> None:
+        """Log duration of dataset loading and model prep before loop starts."""
+        line = f"setup_duration_seconds: {duration_sec:.2f}\n"
+        self.write(line, mode="a")
+
     @staticmethod
     def format_epoch_line(
         *,
@@ -153,12 +171,15 @@ class RunLogWriter:
         saved_best: bool,
         best_val_loss: float,
         epochs_without_improve: int,
+        duration_sec: float | None = None,
     ) -> str:
         val_str = f"{val_loss:.6f}" if not math.isnan(val_loss) else "nan"
+        ts = datetime.now().strftime("%H:%M:%S")
+        dur_str = f" | {duration_sec:.1f}s" if duration_sec is not None else ""
         return (
-            f"epoch {epoch}/{epochs_max} | train_loss: {train_loss:.6f} | val_loss: {val_str} | "
+            f"[{ts}] epoch {epoch}/{epochs_max} | train_loss: {train_loss:.6f} | val_loss: {val_str} | "
             f"lr: {lr:.8f} | saved_best: {saved_best} | best_val_loss: {best_val_loss:.6f} | "
-            f"epochs_no_improve: {epochs_without_improve}"
+            f"epochs_no_improve: {epochs_without_improve}{dur_str}"
         )
 
     def append_epoch_line(
@@ -172,6 +193,7 @@ class RunLogWriter:
         saved_best: bool,
         best_val_loss: float,
         epochs_without_improve: int,
+        duration_sec: float | None = None,
     ) -> None:
         line = self.format_epoch_line(
             epoch=epoch,
@@ -182,6 +204,7 @@ class RunLogWriter:
             saved_best=saved_best,
             best_val_loss=best_val_loss,
             epochs_without_improve=epochs_without_improve,
+            duration_sec=duration_sec,
         )
         self.write(line, mode="a")
 
@@ -248,9 +271,9 @@ class RunLogWriter:
             "--- Best threshold by Youden J ---",
             f"threshold: {best_threshold_youden.get('threshold', 0.0):.4f}",
             f"youden_j: {best_threshold_youden.get('youden_j', 0.0):.4f}",
-            f"accuracy: {best_threshold_youden.get('accuracy', 0.0):.4f}",
-            f"sensitivity: {best_threshold_youden.get('sensitivity', 0.0):.4f}",
-            f"specificity: {best_threshold_youden.get('specificity', 0.0):.4f}",
+            f"best_accuracy: {best_threshold_youden.get('accuracy', 0.0):.4f}",
+            f"best_sensitivity: {best_threshold_youden.get('sensitivity', 0.0):.4f}",
+            f"best_specificity: {best_threshold_youden.get('specificity', 0.0):.4f}",
         ]
         
         if roc_curve and "fpr" in roc_curve and "tpr" in roc_curve:

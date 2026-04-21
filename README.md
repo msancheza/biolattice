@@ -8,15 +8,13 @@
 
 Bio-Lattice is a research prototype for transforming 4D DCE-MRI sequences into compact tensor representations (**Micro-Cubes**), designed to provide a consistent input structure for downstream models. 
 
-Each Micro-Cube is a $64^3$ tensor that captures spatial and temporal information within a unified structure.
+Each Micro-Cube is a multi-channel tensor with shape **(4, 64, 64, 64)**, capturing spatial ($64^3$), morphological, and hemodynamic patterns within a unified structure.
 
-### Design components
-The system implements a four-layer extraction of technical information over the Region of Interest (ROI):
-
-1.  **Anatomy:** Structural representation through post-contrast intensity averages.
-2.  **Variability:** Local variance map to quantify tissue heterogeneity.
-3.  **Kinetics:** Calculation of the relative enhancement rate (log-compressed) between phases.
-4.  **Vascular Highlights:** Isolation of peak enhancement signals against the structural average.
+The system implements a four-channel extraction engine representing different radiological markers:
+- **Channel 1 (Anatomy):** Structural representation through post-contrast intensity averages.
+- **Channel 2 (Variability):** Local variance map to quantify tissue heterogeneity.
+- **Channel 3 (Kinetics):** Voxel-wise map of signal enhancement, quantifying the magnitude of the 'brightening' effect between phases (Log-Relative Change).
+- **Channel 4 (Vascular Peaks):** Isolation of peak enhancement signals against the structural average.
 
 ### Workflow application
 The tool enables the use of 4D data in standard deep learning models by reducing data volume from gigabytes to megabytes through structured tensor representation, while preserving spatiotemporal structure.
@@ -26,7 +24,7 @@ The project uses this method to explore relationships between imaging features a
 ## Repository Contents
 
 This framework provides tools for representation generation and validated benchmarking:
-*   **Extraction Engine (`main.py`):** The core DICOM parser, registration suite, QA gating, and tensor assembly pipeline.
+*   **Extraction Engine (`main.py`):** The core DICOM parser, semantic classifier, registration suite, QA gating, and tensor assembly pipeline.
 *   **Validation Sandbox (`train.py`):** A 3D-ResNet reference model included as a systematic test framework to evaluate whether the extracted Micro-Cubes retain predictive signal relative to target labels.
 *   **Evaluation Interface (`dashboard/app.py`):** A research UI featuring Grad-CAM 3D, designed to map network attention against the isolated Anatomy, Heterogeneity, and Kinetic channels.
 
@@ -36,7 +34,7 @@ The workflow is divided into three modules:
 
 ### 1. Extraction and Quality Control
 The pipeline standardizes raw DICOM data and implements a systematic registration process:
-*   **Sequence Filtering:** Identifies pre-contrast and peak-enhancement series based on chronological metadata.
+*   **Semantic Classification:** Employs a metadata-aware engine (`Clasificador`) with vendor-specific rules (GE, Siemens, Philips) to intelligently identify PRE and POST sequences.
 *   **Registration:** Uses FFT-based phase correlation to align volumes, accounting for patient movement between series.
 *   **Padding Strategy:** Applies conditional padding to maintain a consistent region-of-interest (ROI) shape.
 *   **Audit Logging:** Generates a structured audit trail (JSONL) to track registration quality and data consistency.

@@ -9,11 +9,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, Subset, WeightedRandomSampler
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 import config
 from core import helper
-from core.run_logs import RunLogWriter
+from core.audit import RunLogWriter
 
 
 # --- Model architecture ---
@@ -205,6 +205,7 @@ class BioLatticeTrainer:
 
 def train_model():
     """High-level orchestration for training."""
+    t_start_setup = time.monotonic()
     allowed_ids, excluded_ids = helper.load_allowed_patient_ids_from_audits()
     device = helper.get_device()
     print(f"Computing device: {device}")
@@ -214,13 +215,9 @@ def train_model():
     dataset_val = helper.BioLatticeDataset(config.PATH_CLINICAL, config.PATH_MICRO_CUBES, augment=False, allowed_patient_ids=allowed_ids)
     
     split = config.TRAIN_VAL_SPLIT_FRACTION
-    if getattr(config, "TRAIN_STRATIFIED_SPLIT", False):
-        tr_idx, va_idx, train_size, val_size = helper.build_stratified_train_val_indices(dataset_train, split, config.RANDOM_SEED)
-        train_ds = Subset(dataset_train, tr_idx)
-        val_ds = Subset(dataset_val, va_idx)
-    else:
-        train_ds, _, train_size, val_size = helper.build_patient_level_split(dataset_train, split, config.RANDOM_SEED)
-        _, val_ds, _, _ = helper.build_patient_level_split(dataset_val, split, config.RANDOM_SEED)
+    train_ds, val_ds, train_size, val_size = helper.build_train_val_subsets(
+        dataset_train, dataset_val, split, config.RANDOM_SEED
+    )
 
     if len(train_ds) == 0:
         print("Error: train split is empty.")
@@ -237,8 +234,12 @@ def train_model():
             weights = [w_pos if y >= 0.5 else w_neg for y in labels]
             sampler = WeightedRandomSampler(torch.as_tensor(weights, dtype=torch.double), num_samples=len(weights), replacement=True)
 
-    train_loader = DataLoader(train_ds, batch_size=config.BATCH_SIZE, sampler=sampler, shuffle=(sampler is None), drop_last=True)
-    val_loader = DataLoader(val_ds, batch_size=config.BATCH_SIZE, shuffle=False)
+    num_workers = getattr(config, "TRAIN_NUM_WORKERS", 0)
+    train_loader = DataLoader(
+        train_ds, batch_size=config.BATCH_SIZE, sampler=sampler, 
+        shuffle=(sampler is None), drop_last=True, num_workers=num_workers
+    )
+    val_loader = DataLoader(val_ds, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=num_workers)
 
     # 3. Model, Loss, Optimizer
     model = BioLattice3DResNet().to(device)
@@ -293,12 +294,20 @@ def train_model():
             class_balance_lines=class_balance_log,
         )
         print(f"Training run log: {run_log.path}", flush=True)
+        
+        setup_dur = time.monotonic() - t_start_setup
+        run_log.write_setup_stats(setup_dur)
+        print(f"Setup completed in {setup_dur:.2f}s", flush=True)
 
     try:
         t_loop_mono = time.monotonic()
         for epoch in range(config.EPOCHS):
+            t_epoch_start = time.monotonic()
+            
             t_loss = trainer.train_epoch()
             v_loss = trainer.validate()
+            
+            t_epoch_dur = time.monotonic() - t_epoch_start
             lr = scheduler.get_last_lr()[0]
 
             improved = (not math.isnan(v_loss)) and (v_loss < (trainer.best_val_loss - config.EARLY_STOPPING_MIN_DELTA))
@@ -313,7 +322,7 @@ def train_model():
 
             status_line = (
                 f"Epoch [{epoch+1}/{config.EPOCHS}] | Train Loss: {t_loss:.4f} | Val Loss: {v_loss:.4f} | "
-                f"LR: {lr:.6f} | Improved: {improved}"
+                f"LR: {lr:.6f} | Improved: {improved} | {t_epoch_dur:.1f}s"
             )
             print(status_line, flush=True)
             if run_log:
@@ -326,6 +335,7 @@ def train_model():
                     saved_best=improved,
                     best_val_loss=trainer.best_val_loss,
                     epochs_without_improve=trainer.epochs_without_improve,
+                    duration_sec=t_epoch_dur,
                 )
 
             if (epoch + 1) >= config.EARLY_STOPPING_START_EPOCH and trainer.epochs_without_improve >= config.EARLY_STOPPING_PATIENCE:

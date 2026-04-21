@@ -15,34 +15,6 @@ from torch.utils.data import Subset, Dataset
 
 import config
 
-
-def series_is_pre_contrast(desc_lower: str) -> bool:
-    """PRE: substring 'pre', or 'dyn'/'vibrant' without numbered phases."""
-    # CRITICAL: A pre-contrast series MUST NOT contain any post-contrast indicators
-    if any(x in desc_lower for x in config.POST_SERIES_SUBSTRINGS):
-        return False
-    # Also exclude numbered passes like '2nd pass', '3rd pass'
-    if re.search(r"[2-9](nd|rd|th)", desc_lower) or "pass" in desc_lower:
-        if "1st" not in desc_lower and "pre" not in desc_lower:
-            return False
-            
-    is_pre = any(x in desc_lower for x in ["pre", "t1", "non fs"])
-    is_dynamic = (("dyn" in desc_lower) or ("vibrant" in desc_lower)) and not any(x in desc_lower for x in ["ph", "phase"])
-    return is_pre or is_dynamic
-
-
-def series_is_post_contrast(desc_lower: str) -> bool:
-    has_post_tag = any(x in desc_lower for x in config.POST_SERIES_SUBSTRINGS)
-    has_numbered_phase = bool(
-        re.search(r"(ph|phase|dyn|dynamic|fase|pass)\s?[1-9]", desc_lower)
-    ) or bool(re.search(r"[1-9](st|nd|rd|th)", desc_lower))
-    
-    if "pre" in desc_lower and not has_post_tag and not has_numbered_phase:
-        return False
-        
-    return has_post_tag or has_numbered_phase
-
-
 def normalize_metadata(spacing, thickness):
     """
     Build the 3-vector fed to the metadata MLP from DICOM spacing and thickness.
@@ -60,6 +32,20 @@ def normalize_metadata(spacing, thickness):
         f"CRITICAL: Metadata array length {len(tensor)} != Config DIM {config.META_FEATURE_DIM}"
     )
     return tensor
+
+
+def normalize_cube_per_channel(cube: torch.Tensor) -> torch.Tensor:
+    """
+    Applies the same per-channel Z-score normalization used across training and inference.
+    Returns a clone so callers do not mutate the loaded artifact in place.
+    """
+    cube = cube.clone()
+    for c in range(cube.shape[0]):
+        ch = cube[c]
+        std = torch.std(ch)
+        if std > config.NORMALIZE_EPS:
+            cube[c] = (ch - torch.mean(ch)) / std
+    return cube
 
 
 def get_device():
@@ -119,7 +105,10 @@ def load_allowed_patient_ids_from_audits():
     if os.path.exists(blacklist_path):
         try:
             with open(blacklist_path, "r") as f:
-                quality_blacklist = [line.strip() for line in f if line.strip()]
+                quality_blacklist = [
+                    line.strip() for line in f
+                    if line.strip() and not line.strip().startswith("#")
+                ]
             
             allowed_ids_set = set(allowed_ids)
             initial_count = len(allowed_ids_set)
@@ -212,11 +201,7 @@ class BioLatticeDataset(Dataset):
         # Bio-Lattice v2.6 Fix: Per-channel Z-score normalization.
         # This prevents high-magnitude anatomical channels (C1, C4) from 
         # mathematically "drowning out" functional kinetics/texture (C2, C3).
-        for c in range(cube.shape[0]):
-            ch = cube[c]
-            std = torch.std(ch)
-            if std > config.NORMALIZE_EPS:
-                cube[c] = (ch - torch.mean(ch)) / std
+        cube = normalize_cube_per_channel(cube)
         
         return cube, meta_tensor, torch.tensor([label], dtype=torch.float32)
 
@@ -265,6 +250,26 @@ def build_stratified_train_val_indices(dataset, train_fraction: float, seed: int
     rng.shuffle(train_indices)
     rng.shuffle(val_indices)
     return train_indices, val_indices, len(train_indices), len(val_indices)
+
+
+def build_train_val_subsets(dataset_train, dataset_val, train_fraction, seed, stratified=None):
+    """Builds train/val subsets using the configured split strategy."""
+    if stratified is None:
+        stratified = getattr(config, "TRAIN_STRATIFIED_SPLIT", False)
+
+    if stratified:
+        tr_idx, va_idx, train_size, val_size = build_stratified_train_val_indices(
+            dataset_train, train_fraction, seed
+        )
+        train_ds = Subset(dataset_train, tr_idx)
+        val_ds = Subset(dataset_val, va_idx)
+        return train_ds, val_ds, train_size, val_size
+
+    train_ds, _, train_size, val_size = build_patient_level_split(
+        dataset_train, train_fraction, seed
+    )
+    _, val_ds, _, _ = build_patient_level_split(dataset_val, train_fraction, seed)
+    return train_ds, val_ds, train_size, val_size
 
 
 def labels_for_subset(subset: Subset) -> list[float]:
