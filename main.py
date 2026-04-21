@@ -12,7 +12,7 @@ import pydicom
 import torch
 
 import config
-from core.clasificador import Clasificador
+from core.classifier import SeriesClassifier
 from core.dicom_utils import get_3d_volume, load_weave_metadata
 from core.microcube import MicroCube
 from core.registration import register_volumes_fft
@@ -100,18 +100,18 @@ def discover_series_for_patient(folder_patient: str) -> list[dict]:
         if dicoms:
             ds = pydicom.dcmread(os.path.join(root, dicoms[0]))
             series_found.append(
-                Clasificador.classify_series(
-                    Clasificador.extract_series_metadata(ds, root, len(dicoms))
+                SeriesClassifier.classify_series(
+                    SeriesClassifier.extract_series_metadata(ds, root, len(dicoms))
                 )
             )
 
-    series_found.sort(key=Clasificador.sort_key)
+    series_found.sort(key=SeriesClassifier.sort_key)
     return series_found
 
 
 def select_semantic_pair(series_found: list[dict]) -> dict:
     """Resolve PRE/POST paths and semantic metadata from discovered series."""
-    selected_pre, selected_post = Clasificador.select_pre_post(series_found)
+    selected_pre, selected_post = SeriesClassifier.select_pre_post(series_found)
     path_pre = selected_pre["path"] if selected_pre else None
     path_post = selected_post["path"] if selected_post else None
     selected_pre_desc = next((s["desc"] for s in series_found if s["path"] == path_pre), "")

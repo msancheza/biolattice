@@ -34,7 +34,7 @@ The workflow is divided into three modules:
 
 ### 1. Extraction and Quality Control
 The pipeline standardizes raw DICOM data and implements a systematic registration process:
-*   **Semantic Classification:** Employs a metadata-aware engine (`Clasificador`) with vendor-specific rules (GE, Siemens, Philips) to intelligently identify PRE and POST sequences.
+*   **Semantic Classification:** Employs a metadata-aware engine (`SeriesClassifier`) with vendor-specific rules (GE, Siemens, Philips) to intelligently identify PRE and POST sequences.
 *   **Registration:** Uses FFT-based phase correlation to align volumes, accounting for patient movement between series.
 *   **Padding Strategy:** Applies conditional padding to maintain a consistent region-of-interest (ROI) shape.
 *   **Audit Logging:** Generates a structured audit trail (JSONL) to track registration quality and data consistency.
