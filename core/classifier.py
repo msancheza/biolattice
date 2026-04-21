@@ -151,28 +151,28 @@ class SeriesClassifier:
             score.add_pre(1.5, "dynamic sequence keyword")
             score.add_post(2.5, "dynamic sequence keyword")
 
-        # --- Mejora A: Penalizar pases tardíos numerados (2nd, 3rd, 4th...) ---
-        # Series como "3rd pass dyn" o "4th pass" son fases de lavado tardío,
-        # nunca deben ser candidatas PRE y raramente son el POST de interés (fase 1).
-        # Se aplica exclusión solo si no contiene "pre" ni "1st" de forma explícita.
+        # --- Improvement A: Penalize numbered late passes (2nd, 3rd, 4th...) ---
+        # Series such as "3rd pass dyn" or "4th pass" are late washout phases,
+        # they should never be PRE candidates and are rarely the POST of interest (phase 1).
+        # Exclusion is applied only if it doesn't explicitly contain "pre" or "1st".
         _is_late_pass = bool(re.search(r"[2-9](nd|rd|th)", text))
         _has_pass_word = "pass" in text
         _has_pre_anchor = cls._contains_any(text, ("pre", "1st", "baseline"))
         if (_is_late_pass or _has_pass_word) and not _has_pre_anchor:
             score.exclude("late numbered pass", penalty=4.0)
 
-        # --- Mejora B: Refuerzo PRE para dinámico puro sin marcador de fase ---
-        # Un "dyn" o "vibrant" sin "ph"/"phase" es la adquisición dinámica en blanco
-        # (typically el PRE o el acq. base). Darle mayor peso PRE diferencial.
+        # --- Improvement B: PRE reinforcement for pure dynamic without phase marker ---
+        # A "dyn" or "vibrant" without "ph"/"phase" is the baseline dynamic acquisition
+        # (typically the PRE or the base acq). Give it higher differential PRE weight.
         _has_pure_dynamic = cls._contains_any(text, ("dyn", "vibrant"))
         _has_phase_marker = cls._contains_any(text, ("ph", "phase", "fase"))
         if _has_pure_dynamic and not _has_phase_marker:
             score.add_pre(1.0, "pure dynamic without phase marker → pre bias")
 
-        # --- Mejora C: Guard de conflicto PRE/POST en el mismo texto ---
-        # Si "pre" aparece en el texto pero NO hay un tag POST ni una fase numerada,
-        # aplicar penalidad suave a POST para resolver el empate a favor de PRE.
-        # Cubre casos como "pre_scan", "pre t1 3d" que el classifier puntuaba como ambiguous.
+        # --- Improvement C: PRE/POST conflict guard in the same text ---
+        # If "pre" appears in the text but there is NO POST tag or a numbered phase,
+        # apply a soft penalty to POST to resolve the tie in favor of PRE.
+        # Covers cases like "pre_scan", "pre t1 3d" which the classifier previously scored as ambiguous.
         _has_pre_kw = cls._contains_any(text, config.SEMANTIC_PRE_KEYWORDS)
         _has_post_kw = cls._contains_any(text, config.SEMANTIC_POST_KEYWORDS)
         _has_numbered_phase = bool(re.search(r"(ph|phase|dyn|dynamic|fase|pass)\s?[1-9]", text)) \
