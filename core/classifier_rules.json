@@ -16,8 +16,11 @@
       "reason": "diffusion"
     },
     {
+      "keywords": ["sub", "subtracted", "mip", "mips", "map", "maps", "fatsat map", "parametric", "fusion"],
+      "reason": "derived/postprocessed series"
+    },
+    {
       "keywords": ["t2", "stir", "tse", "haste"],
-      "exclude_if_not": ["t1"],
       "reason": "non-T1"
     }
   ],

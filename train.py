@@ -70,9 +70,8 @@ class BioLattice3DResNet(nn.Module):
             nn.Flatten()
         )
         
-        # Dynamically compute the flattened size after spatial layers.
-        # This makes the model robust to changes in MICRO_CUBE_SIZE, POOL_KERNEL, etc.
-        # without requiring manual recalculation of CLASSIFIER_LINEAR_IN.
+        # Compute the classifier input width from the current spatial stack.
+        # This keeps the linear head aligned with the configured cube and pooling sizes.
         with torch.no_grad():
             _dummy = torch.zeros(1, c.INPUT_CHANNELS, c.MICRO_CUBE_SIZE, c.MICRO_CUBE_SIZE, c.MICRO_CUBE_SIZE)
             _dummy = self.pool1(self.block1(self.prep(_dummy)))
