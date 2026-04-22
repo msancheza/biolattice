@@ -18,4 +18,5 @@ v2/
 .env
 dashboard/training_logs/
 dashboard/extraction_audits/
+dashboard/extraction_logs/
 dashboard/data_quality_audit/

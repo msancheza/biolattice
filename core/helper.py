@@ -60,7 +60,7 @@ def get_device():
 def load_allowed_patient_ids_from_audits():
     """
     Reads all extraction audit JSONL files, resolves to the latest status per patient,
-    and returns allowed patient IDs. Used to filter the dataset based on quality gates.
+    and returns allowed patient IDs. Used to filter the dataset based on audit status only.
     """
     if not getattr(config, "TRAIN_FILTER_BY_AUDIT", False):
         return None, []
@@ -96,38 +96,6 @@ def load_allowed_patient_ids_from_audits():
             allowed_ids.append(pid)
         else:
             excluded_ids.append(pid)
-
-    # SECURE GATE: Also check for the Quality Blacklist (Low signal, artifacts, or excessive padding).
-    # This list allows for surgical exclusion of patients without re-running the full audit.
-    base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    blacklist_path = os.path.join(base_dir, "dashboard", "data_quality_audit", "cube_blacklist.txt")
-    
-    if os.path.exists(blacklist_path):
-        try:
-            with open(blacklist_path, "r") as f:
-                quality_blacklist = [
-                    line.strip() for line in f
-                    if line.strip() and not line.strip().startswith("#")
-                ]
-            
-            allowed_ids_set = set(allowed_ids)
-            initial_count = len(allowed_ids_set)
-            
-            # Remove bad quality IDs from allowed
-            for q_pid in quality_blacklist:
-                if q_pid in allowed_ids_set:
-                    allowed_ids_set.remove(q_pid)
-                # Add to excluded list for log traceability
-                if q_pid not in excluded_ids:
-                    excluded_ids.append(q_pid)
-            
-            purged_by_quality = initial_count - len(allowed_ids_set)
-            if purged_by_quality > 0:
-                print(f"Quality Gate: Purged {purged_by_quality} suspicious patients from training set.")
-            
-            allowed_ids = list(allowed_ids_set)
-        except Exception as e:
-            print(f"Warning: Could not read quality blacklist: {e}")
 
     print(f"Audit filter active (from {len(paths)} files) | Final allowed: {len(allowed_ids)}")
     return set(allowed_ids), excluded_ids
@@ -198,9 +166,8 @@ class BioLatticeDataset(Dataset):
                 noise = torch.randn_like(cube) * 0.02
                 cube = cube + noise
 
-        # Bio-Lattice v2.6 Fix: Per-channel Z-score normalization.
-        # This prevents high-magnitude anatomical channels (C1, C4) from 
-        # mathematically "drowning out" functional kinetics/texture (C2, C3).
+        # Normalize each channel independently before model ingestion.
+        # This keeps the anatomical and functional channels on comparable numeric scales.
         cube = normalize_cube_per_channel(cube)
         
         return cube, meta_tensor, torch.tensor([label], dtype=torch.float32)

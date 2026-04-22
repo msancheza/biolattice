@@ -3,6 +3,7 @@ import os
 # when not yet implemented on MPS (mirrors the same flag in train.py).
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
+import argparse
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -132,10 +133,12 @@ def visualize_expert_analysis(patient_id):
     return fig
 
 if __name__ == "__main__":
-    # Test execution
-    pid = "Breast_MRI_001"
-    fig = visualize_expert_analysis(pid)
+    parser = argparse.ArgumentParser(description="Visualize Grad-CAM overlays for a single micro-cube.")
+    parser.add_argument("patient_id", help="Patient identifier, for example Breast_MRI_001")
+    args = parser.parse_args()
+
+    fig = visualize_expert_analysis(args.patient_id)
     if fig:
         plt.show()
     else:
-        print("Required files not found.")
+        print(f"Required files not found for {args.patient_id}.")
