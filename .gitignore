@@ -10,7 +10,7 @@ datasets/micro_cubes/
 datasets/raw_data/
 datasets/model/
 
-# Previews
+# Previews.
 backup/
 docs/
 scripts/
