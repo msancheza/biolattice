@@ -22,6 +22,10 @@ PATH_CLINICAL = os.path.join(PROJECT_ROOT, "datasets", "Clinical_and_Other_Featu
 PATH_MODEL_DIR = os.path.join(PROJECT_ROOT, "datasets", "model")
 MODEL_WEIGHTS_FILENAME = "biolattice_3dresnet_binary.pth"
 PATH_MODEL_WEIGHTS = os.path.join(PROJECT_ROOT, "datasets", "model", MODEL_WEIGHTS_FILENAME)
+NORMALIZATION_PROFILE_STATS_FILENAME = "normalization_profile_stats.json"
+PATH_NORMALIZATION_PROFILE_STATS = os.path.join(
+    PATH_MODEL_DIR, NORMALIZATION_PROFILE_STATS_FILENAME
+)
 PATH_LOGS = os.path.join(PROJECT_ROOT, "dashboard", "extraction_log.txt")
 PATH_EXTRACTION_AUDIT_DIR = os.path.join(PROJECT_ROOT, "dashboard", "extraction_audits")
 PATH_TRAINING_LOG_DIR = os.path.join(PROJECT_ROOT, "dashboard", "training_logs")
@@ -99,10 +103,15 @@ TRAIN_USE_CLASS_POS_WEIGHT = True  # BCE pos_weight = n_neg / n_pos inside Focal
 TRAIN_NUM_WORKERS = 4              # Parallel data loading workers (Efficiency / Green AI)
 ADAMW_WEIGHT_DECAY = 1e-2
 ONECYCLE_MAX_LR = 1.5e-4
-# Optional second-pass input normalization. Micro-cubes are normalized during
-# extraction; keep this off when the model should consume that representation directly.
-TRAIN_NORMALIZE_CUBE_PER_CHANNEL = False
+# Model-input normalization mode.
+TRAIN_NORMALIZATION_MODE = "profile_conditioned"
+# Baseline per-channel scaling switch.
+TRAIN_NORMALIZE_CUBE_PER_CHANNEL = True
 NORMALIZE_EPS = 1e-8
+# High-percentile clipping used by conservative normalization paths.
+NORMALIZATION_CLIP_PERCENTILE = 0.99
+# Minimum robust scale denominator.
+ROBUST_SCALE_MIN_IQR = 0.05
 
 # =============================================================================
 # 8. Model architecture (BioLattice3DResNet)

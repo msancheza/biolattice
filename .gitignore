@@ -10,7 +10,7 @@ datasets/micro_cubes/
 datasets/raw_data/
 datasets/model/
 
-# Previews
+# Previews.
 backup/
 docs/
 scripts/
@@ -20,3 +20,4 @@ dashboard/training_logs/
 dashboard/extraction_audits/
 dashboard/extraction_logs/
 dashboard/data_quality_audit/
+dashboard/normalization_review/

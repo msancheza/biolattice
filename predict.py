@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 import config
 from core import helper
 from core.helper import BioLatticeDataset
+from core.normalization import prepare_cube_for_model
 from core.audit import RunLogWriter
 
 # Probability threshold on sigmoid output (0–1); mirrors `MALIGNANCY_PROB_THRESHOLD` in config.
@@ -49,7 +50,7 @@ def predict_patient(p_id):
     thickness = meta.get('slice_thickness', 1.0)
     
     # Important: must match helper.BioLatticeDataset preprocessing.
-    cube = helper.prepare_cube_for_model(data_obj['tensor'])
+    cube = prepare_cube_for_model(data_obj['tensor'])
     
     cube = cube.unsqueeze(0).to(device)
     meta_tensor = helper.normalize_metadata(spacing, thickness).unsqueeze(0).to(device)
