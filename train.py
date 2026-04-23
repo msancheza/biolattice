@@ -177,6 +177,7 @@ def _init_wandb_run(run_log, *, device, dataset_stats, class_stats):
             "train_filter_by_audit": bool(getattr(config, "TRAIN_FILTER_BY_AUDIT", False)),
             "train_weighted_sampler": bool(getattr(config, "TRAIN_USE_WEIGHTED_SAMPLER", False)),
             "train_class_pos_weight": bool(getattr(config, "TRAIN_USE_CLASS_POS_WEIGHT", False)),
+            "train_normalize_cube_per_channel": bool(getattr(config, "TRAIN_NORMALIZE_CUBE_PER_CHANNEL", False)),
             **dataset_stats,
             **class_stats,
         },

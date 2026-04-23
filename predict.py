@@ -49,9 +49,8 @@ def predict_patient(p_id):
     spacing = meta.get('voxel_spacing', [1.0, 1.0])
     thickness = meta.get('slice_thickness', 1.0)
     
-    # 3. Micro-cube Processing & Normalization (Z-Score)
-    # Important: Must match helper.BioLatticeDataset logic
-    cube = helper.normalize_cube_per_channel(data_obj['tensor'])
+    # Important: must match helper.BioLatticeDataset preprocessing.
+    cube = helper.prepare_cube_for_model(data_obj['tensor'])
     
     cube = cube.unsqueeze(0).to(device)
     meta_tensor = helper.normalize_metadata(spacing, thickness).unsqueeze(0).to(device)

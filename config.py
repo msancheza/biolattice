@@ -99,6 +99,11 @@ TRAIN_USE_CLASS_POS_WEIGHT = True  # BCE pos_weight = n_neg / n_pos inside Focal
 TRAIN_NUM_WORKERS = 4              # Parallel data loading workers (Efficiency / Green AI)
 ADAMW_WEIGHT_DECAY = 1e-2
 ONECYCLE_MAX_LR = 1.5e-4
+# Optional second-pass input normalization. Micro-cubes are already normalized
+# during extraction, so this is disabled by default for the next A/B training run.
+TRAIN_NORMALIZE_CUBE_PER_CHANNEL = os.getenv(
+    "TRAIN_NORMALIZE_CUBE_PER_CHANNEL", "0"
+).strip().lower() in {"1", "true", "yes", "on"}
 NORMALIZE_EPS = 1e-8
 
 # =============================================================================
