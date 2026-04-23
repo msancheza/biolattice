@@ -14,6 +14,7 @@ import torch
 from torch.utils.data import Subset, Dataset
 
 import config
+from core.normalization import prepare_cube_for_model
 
 def normalize_metadata(spacing, thickness):
     """
@@ -32,30 +33,6 @@ def normalize_metadata(spacing, thickness):
         f"CRITICAL: Metadata array length {len(tensor)} != Config DIM {config.META_FEATURE_DIM}"
     )
     return tensor
-
-
-def normalize_cube_per_channel(cube: torch.Tensor) -> torch.Tensor:
-    """
-    Applies the same per-channel Z-score normalization used across training and inference.
-    Returns a clone so callers do not mutate the loaded artifact in place.
-    """
-    cube = cube.clone()
-    for c in range(cube.shape[0]):
-        ch = cube[c]
-        std = torch.std(ch)
-        if std > config.NORMALIZE_EPS:
-            cube[c] = (ch - torch.mean(ch)) / std
-    return cube
-
-
-def prepare_cube_for_model(cube: torch.Tensor) -> torch.Tensor:
-    """
-    Applies the configured model-input preprocessing for training and inference.
-    Keep this path shared so predictions match the training normalization policy.
-    """
-    if getattr(config, "TRAIN_NORMALIZE_CUBE_PER_CHANNEL", False):
-        return normalize_cube_per_channel(cube)
-    return cube.float()
 
 def get_device():
     """Detects best available device (CUDA, MPS, or CPU)."""

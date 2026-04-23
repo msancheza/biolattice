@@ -102,7 +102,8 @@ with tab3:
                         continue
 
                     if "roc_auc:" in line:
-                        data["auc"] = float(line.split(":", 1)[1].strip())
+                        auc_text = line.split(":", 1)[1].strip().split()[0]
+                        data["auc"] = float(auc_text)
                     elif "configured_threshold:" in line:
                         data["configured_threshold"] = float(line.split(":", 1)[1].strip())
                     elif stripped.startswith("best_accuracy:"):
@@ -131,6 +132,16 @@ with tab3:
                         data["roc_curve"]["tpr"] = ast.literal_eval(line.split("tpr:", 1)[1].strip())
             
             # Calculate F1-Score (Rigor)
+            required = ("auc", "accuracy", "sensitivity", "specificity")
+            missing = [key for key in required if key not in data]
+            if missing:
+                return {
+                    "error": (
+                        f"Incomplete metrics log '{os.path.basename(filepath)}'. "
+                        f"Missing: {', '.join(missing)}. Run fresh evaluation to generate a complete metrics file."
+                    )
+                }
+
             tp, fp, fn = data["confusion"].get("tp", 0), data["confusion"].get("fp", 0), data["confusion"].get("fn", 0)
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0
             recall = data.get("sensitivity", 0)
@@ -156,14 +167,28 @@ with tab3:
         log_dir = os.path.join(BASE_DIR, "dashboard", "training_logs")
         metrics_files = [f for f in os.listdir(log_dir) if f.startswith("metrics_run") and f.endswith(".txt")]
         if metrics_files:
-            latest_file = os.path.join(log_dir, sorted(metrics_files)[-1])
-            res = parse_metrics_file(latest_file)
-            if "error" in res: st.error(res["error"])
-            else: st.success(f"Loaded: {os.path.basename(latest_file)}")
+            parse_errors = []
+            for filename in sorted(metrics_files, reverse=True):
+                candidate = os.path.join(log_dir, filename)
+                parsed = parse_metrics_file(candidate)
+                if "error" in parsed:
+                    parse_errors.append(parsed["error"])
+                    continue
+                res = parsed
+                st.success(f"Loaded: {filename}")
+                break
+            if res is None:
+                st.error(parse_errors[0] if parse_errors else "No complete metrics logs found.")
         else:
             st.warning("No metrics logs found.")
 
     if res and "error" not in res:
+        required = ("auc", "accuracy", "sensitivity", "specificity")
+        missing = [key for key in required if key not in res]
+        if missing:
+            st.error(f"Incomplete metrics result. Missing: {', '.join(missing)}.")
+            st.stop()
+
         st.markdown("#### Performance Metrics")
         c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("ROC AUC", f"{res['auc']:.4f}")
