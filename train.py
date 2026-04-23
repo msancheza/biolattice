@@ -146,6 +146,63 @@ class FocalLoss(nn.Module):
         return (self.alpha * ((1 - pt) ** self.gamma) * bce_loss).mean()
 
 
+def _init_wandb_run(run_log, *, device, dataset_stats, class_stats):
+    """Start an optional W&B run without making wandb a hard dependency."""
+    if not getattr(config, "TRAIN_USE_WANDB", False):
+        return None
+
+    try:
+        import wandb
+    except ImportError:
+        msg = "TRAIN_USE_WANDB=True but wandb is not installed. Continuing without W&B."
+        print(msg, flush=True)
+        if run_log:
+            run_log.append_note(msg)
+        return None
+
+    init_kwargs = {
+        "project": getattr(config, "WANDB_PROJECT", "microcube") or "microcube",
+        "config": {
+            "device": str(device),
+            "batch_size": config.BATCH_SIZE,
+            "epochs": config.EPOCHS,
+            "learning_rate": config.LEARNING_RATE,
+            "onecycle_max_lr": config.ONECYCLE_MAX_LR,
+            "weight_decay": config.ADAMW_WEIGHT_DECAY,
+            "early_stopping_patience": config.EARLY_STOPPING_PATIENCE,
+            "early_stopping_min_delta": config.EARLY_STOPPING_MIN_DELTA,
+            "early_stopping_start_epoch": config.EARLY_STOPPING_START_EPOCH,
+            "focal_loss_alpha": config.FOCAL_LOSS_ALPHA,
+            "focal_loss_gamma": config.FOCAL_LOSS_GAMMA,
+            "train_filter_by_audit": bool(getattr(config, "TRAIN_FILTER_BY_AUDIT", False)),
+            "train_weighted_sampler": bool(getattr(config, "TRAIN_USE_WEIGHTED_SAMPLER", False)),
+            "train_class_pos_weight": bool(getattr(config, "TRAIN_USE_CLASS_POS_WEIGHT", False)),
+            **dataset_stats,
+            **class_stats,
+        },
+    }
+
+    entity = getattr(config, "WANDB_ENTITY", "")
+    run_name = getattr(config, "WANDB_RUN_NAME", "")
+    if entity:
+        init_kwargs["entity"] = entity
+    if run_name:
+        init_kwargs["name"] = run_name
+
+    try:
+        wandb_run = wandb.init(**init_kwargs)
+    except Exception as exc:
+        msg = f"W&B initialization failed: {exc}. Continuing with local logs only."
+        print(msg, flush=True)
+        if run_log:
+            run_log.append_note(msg)
+        return None
+
+    if run_log:
+        run_log.append_note(f"W&B enabled: {wandb_run.url or 'run initialized'}")
+    return wandb_run
+
+
 class BioLatticeTrainer:
     """Encapsulates training logic, validation, and logging."""
 
@@ -262,6 +319,21 @@ def train_model():
     n_tr_neg = len(train_labels) - n_tr_pos
     n_va_pos = sum(1 for y in val_labels if y >= 0.5)
     n_va_neg = len(val_labels) - n_va_pos
+    dataset_stats = {
+        "dataset_train_rows": len(dataset_train),
+        "dataset_val_rows": len(dataset_val),
+        "train_split_size": train_size,
+        "val_split_size": val_size,
+        "excluded_by_audit_count": len(excluded_ids) if excluded_ids else 0,
+        "train_batches_per_epoch": num_train_batches,
+        "val_batches_per_epoch": num_val_batches,
+    }
+    class_stats = {
+        "train_label_0": n_tr_neg,
+        "train_label_1": n_tr_pos,
+        "val_label_0": n_va_neg,
+        "val_label_1": n_va_pos,
+    }
     class_balance_log = (
         f"train_label_0: {n_tr_neg} | train_label_1: {n_tr_pos}",
         f"val_label_0: {n_va_neg} | val_label_1: {n_va_pos}",
@@ -270,11 +342,13 @@ def train_model():
     # 4. Training Cycle
     run_log = RunLogWriter.create_new(kind="training") if getattr(config, "TRAIN_LOG_WRITE_TXT", True) else None
     trainer = BioLatticeTrainer(model, train_loader, val_loader, criterion, optimizer, scheduler, device, run_log)
+    wandb_run = None
 
     t_loop_mono = None
     epochs_completed = 0
     early_stopped = False
     loop_error = None
+    final_status = "not_started"
 
     if run_log:
         start_iso = datetime.now().isoformat(timespec="seconds")
@@ -297,6 +371,13 @@ def train_model():
         setup_dur = time.monotonic() - t_start_setup
         run_log.write_setup_stats(setup_dur)
         print(f"Setup completed in {setup_dur:.2f}s", flush=True)
+
+    wandb_run = _init_wandb_run(
+        run_log,
+        device=device,
+        dataset_stats=dataset_stats,
+        class_stats=class_stats,
+    )
 
     try:
         t_loop_mono = time.monotonic()
@@ -336,6 +417,20 @@ def train_model():
                     epochs_without_improve=trainer.epochs_without_improve,
                     duration_sec=t_epoch_dur,
                 )
+            if wandb_run is not None:
+                wandb_run.log(
+                    {
+                        "epoch": epochs_completed,
+                        "train/loss": float(t_loss),
+                        "val/loss": float(v_loss),
+                        "train/lr": float(lr),
+                        "val/best_loss": float(trainer.best_val_loss),
+                        "train/epoch_duration_sec": float(t_epoch_dur),
+                        "train/epochs_without_improve": trainer.epochs_without_improve,
+                        "train/improved": int(improved),
+                    },
+                    step=epochs_completed,
+                )
 
             if (epoch + 1) >= config.EARLY_STOPPING_START_EPOCH and trainer.epochs_without_improve >= config.EARLY_STOPPING_PATIENCE:
                 msg = (
@@ -355,19 +450,25 @@ def train_model():
         trainer.log_to_file(f"note: training exception: {loop_error}")
         raise
     finally:
+        if t_loop_mono is not None:
+            final_status = "failed" if loop_error else ("early_stop" if early_stopped else "completed")
         if trainer and trainer.run_log and t_loop_mono is not None:
             end_iso = datetime.now().isoformat(timespec="seconds")
             duration = time.monotonic() - t_loop_mono
-            status = "failed" if loop_error else ("early_stop" if early_stopped else "completed")
             trainer.run_log.write_training_footer(
                 end_iso=end_iso,
                 duration_sec=duration,
                 epochs_completed=epochs_completed,
                 best_val_loss=trainer.best_val_loss,
                 early_stopped=early_stopped,
-                status=status,
+                status=final_status,
                 extra=loop_error or "",
             )
+        if wandb_run is not None:
+            wandb_run.summary["epochs_completed"] = epochs_completed
+            wandb_run.summary["best_val_loss"] = trainer.best_val_loss
+            wandb_run.summary["status"] = final_status
+            wandb_run.finish()
 
 if __name__ == "__main__":
     train_model()

@@ -74,6 +74,12 @@ TRAIN_FILTER_BY_AUDIT = True           # Only train on audited-quality patients 
 TRAIN_ALLOWED_AUDIT_STATUSES = ("OK", "WARNING")
 # Per-run training summary (.txt): host, timestamps, sample counts, optional early-stop stats.
 TRAIN_LOG_WRITE_TXT = True
+# Optional external experiment tracking. Disabled by default so local/CPU runs
+# and Kaggle notebooks work without installing wandb.
+TRAIN_USE_WANDB = os.getenv("TRAIN_USE_WANDB", "0").strip().lower() in {"1", "true", "yes", "on"}
+WANDB_PROJECT = os.getenv("WANDB_PROJECT", "microcube")
+WANDB_ENTITY = os.getenv("WANDB_ENTITY", "").strip()
+WANDB_RUN_NAME = os.getenv("WANDB_RUN_NAME", "").strip()
 
 BATCH_SIZE = 16
 LEARNING_RATE = 5e-5
