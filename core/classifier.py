@@ -231,7 +231,7 @@ class SeriesClassifier:
         
         if _has_pre_kw and not _has_post_kw and not _has_numbered_phase:
             score.pre_score += 1.0
-            score.evidence.append("pre:+1.0 conflict-guard (pre keyword, no post signal)")
+            score.evidence.append("pre:+1.0 explicit pre keyword without post signal")
 
     @classmethod
     def _apply_contrast_rules(cls, meta: dict[str, Any], score: SemanticScore) -> None:

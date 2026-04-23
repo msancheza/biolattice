@@ -143,6 +143,7 @@ class RunLogWriter:
                 f"TRAIN_STRATIFIED_SPLIT: {getattr(config, 'TRAIN_STRATIFIED_SPLIT', False)}",
                 f"TRAIN_USE_WEIGHTED_SAMPLER: {getattr(config, 'TRAIN_USE_WEIGHTED_SAMPLER', False)}",
                 f"TRAIN_USE_CLASS_POS_WEIGHT: {getattr(config, 'TRAIN_USE_CLASS_POS_WEIGHT', False)}",
+                f"TRAIN_NORMALIZE_CUBE_PER_CHANNEL: {getattr(config, 'TRAIN_NORMALIZE_CUBE_PER_CHANNEL', False)}",
                 f"TRAIN_USE_WANDB: {getattr(config, 'TRAIN_USE_WANDB', False)}",
                 f"PATH_MICRO_CUBES: {config.PATH_MICRO_CUBES}",
                 f"PATH_MODEL_WEIGHTS: {config.PATH_MODEL_WEIGHTS}",

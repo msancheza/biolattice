@@ -1,6 +1,5 @@
 import os
-# Mandatory patch for Mac (Apple Silicon): allows ops like AvgPool3d to fall back to CPU
-# when not yet implemented on MPS (mirrors the same flag in train.py).
+# Allows unsupported MPS operations to fall back to CPU on Apple Silicon.
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 import numpy as np
@@ -49,9 +48,8 @@ def predict_patient(p_id):
     spacing = meta.get('voxel_spacing', [1.0, 1.0])
     thickness = meta.get('slice_thickness', 1.0)
     
-    # 3. Micro-cube Processing & Normalization (Z-Score)
-    # Important: Must match helper.BioLatticeDataset logic
-    cube = helper.normalize_cube_per_channel(data_obj['tensor'])
+    # Important: must match helper.BioLatticeDataset preprocessing.
+    cube = helper.prepare_cube_for_model(data_obj['tensor'])
     
     cube = cube.unsqueeze(0).to(device)
     meta_tensor = helper.normalize_metadata(spacing, thickness).unsqueeze(0).to(device)

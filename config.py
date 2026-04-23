@@ -99,6 +99,9 @@ TRAIN_USE_CLASS_POS_WEIGHT = True  # BCE pos_weight = n_neg / n_pos inside Focal
 TRAIN_NUM_WORKERS = 4              # Parallel data loading workers (Efficiency / Green AI)
 ADAMW_WEIGHT_DECAY = 1e-2
 ONECYCLE_MAX_LR = 1.5e-4
+# Optional second-pass input normalization. Micro-cubes are normalized during
+# extraction; keep this off when the model should consume that representation directly.
+TRAIN_NORMALIZE_CUBE_PER_CHANNEL = False
 NORMALIZE_EPS = 1e-8
 
 # =============================================================================
