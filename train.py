@@ -2,7 +2,7 @@ import os
 import math
 import time
 from datetime import datetime
-# Mandatory patch for Mac (Apple Silicon): Allows complex 3D operations like MaxPool3d to run softly
+# Allows unsupported MPS operations to fall back to CPU on Apple Silicon.
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 import torch

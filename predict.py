@@ -1,6 +1,5 @@
 import os
-# Mandatory patch for Mac (Apple Silicon): allows ops like AvgPool3d to fall back to CPU
-# when not yet implemented on MPS (mirrors the same flag in train.py).
+# Allows unsupported MPS operations to fall back to CPU on Apple Silicon.
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 import numpy as np

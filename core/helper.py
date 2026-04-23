@@ -57,7 +57,6 @@ def prepare_cube_for_model(cube: torch.Tensor) -> torch.Tensor:
         return normalize_cube_per_channel(cube)
     return cube.float()
 
-
 def get_device():
     """Detects best available device (CUDA, MPS, or CPU)."""
     if torch.cuda.is_available():
@@ -166,12 +165,12 @@ class BioLatticeDataset(Dataset):
             k = random.randint(0, 3)
             cube = torch.rot90(cube, k, dims=[2, 3])
 
-            # --- Intensity augmentations (simulate MRI gain variability) ---
-            # Scale: simulates different RF gain / receive coil response (±10%)
+            # --- Intensity augmentations for scanner and acquisition variability ---
+            # Global scale accounts for differences in RF gain and coil response.
             if random.random() > 0.5:
                 scale = 1.0 + (random.random() - 0.5) * 0.20  # [0.90, 1.10]
                 cube = cube * scale
-            # Additive noise: simulates thermal noise floor in MRI
+            # Additive noise accounts for low-amplitude background signal.
             if random.random() > 0.7:
                 noise = torch.randn_like(cube) * 0.02
                 cube = cube + noise
