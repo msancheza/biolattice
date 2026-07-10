@@ -16,6 +16,8 @@ The system implements a four-channel extraction engine representing different ra
 - **Channel 3 (Kinetics):** Voxel-wise map of signal enhancement, quantifying the magnitude of the 'brightening' effect between phases (Log-Relative Change).
 - **Channel 4 (Vascular Peaks):** Isolation of peak enhancement signals against the structural average.
 
+NOTE: This repository contains a legacy/unofficial version. Current research has evolved significantly and is not publicly available. For collaborations or access to the current version, please contact the author.
+
 ### Workflow application
 The tool enables the use of 4D data in standard deep learning models by reducing data volume from gigabytes to megabytes through structured tensor representation, while preserving spatiotemporal structure.
 
